@@ -21,6 +21,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y powershell gpg
 
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pm-docs-signed
+          path: docs/releases/
+
+      - name: List downloaded files
+        run: ls -l docs/releases/
+
       - name: Verify signatures
         run: |
           pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ChangeRequest.pdf -Verify
