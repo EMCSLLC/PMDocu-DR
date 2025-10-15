@@ -3,25 +3,30 @@ name: Verify Signatures
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ["Build & Sign Docs"]
+    workflows: ["Build and Sign Docs"]
     types:
       - completed
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup PowerShell
-        uses: PowerShell/setup-pwsh@v2
+      - name: Install PowerShell and GPG
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y powershell gpg
 
-      - name: Install GPG
-        run: sudo apt-get install -y gpg
+      - name: Verify signatures
+        run: |
+          pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ChangeRequest.pdf -Verify
+          pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ImplementationPlan.pdf -Verify
 
-      - name: Verify signature for ChangeRequest
-        run: pwsh scripts/sign-gpg.ps1 -TargetFile docs/releases/ChangeRequest.pdf -Verify
-
-      - name: Verify hash for ChangeRequest
-        run: pwsh scripts/verify-hash.ps1 -PdfFile docs/releases/ChangeRequest.pdf
+      - name: Verify hashes
+        run: |
+          pwsh -File scripts/verify-hash.ps1 -PdfFile docs/releases/ChangeRequest.pdf
+          pwsh -File scripts/verify-hash.ps1 -PdfFile docs/releases/ImplementationPlan.pdf
