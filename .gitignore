@@ -1,0 +1,21 @@
+# Ignore build artifacts and temporary files
+docs/releases/*
+!docs/releases/.gitkeep
+*.sha256
+*.asc
+*.pdf
+
+# PowerShell temp and cache
+*.psd1.cache
+*.log
+*.bak
+Thumbs.db
+.DS_Store
+
+# VSCode / Editor
+.vscode/
+.idea/
+*.code-workspace
+
+# OS junk
+desktop.ini

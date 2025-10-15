@@ -1,0 +1,2 @@
+MIT License
+© 2025 EMCSLLC

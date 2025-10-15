@@ -1,0 +1,12 @@
+formatter:
+  name: custom-clean
+  enabled: true
+pdf:
+  engine: xelatex
+  paper: letter
+  margin: 1in
+sign:
+  enabled: true
+  method: gpg
+  keyid: 405BDF22E0254CAF8CFB242DB4A165D836724E3C
+
