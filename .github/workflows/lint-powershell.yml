@@ -1,0 +1,60 @@
+name: Lint PowerShell
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**/*.ps1'
+      - '**/*.psd1'
+      - '**/*.psm1'
+  pull_request:
+    paths:
+      - '**/*.ps1'
+      - '**/*.psd1'
+      - '**/*.psm1'
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      # --- Checkout -----------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- Install PSScriptAnalyzer --------------------------------------------
+      - name: Install PowerShell analyzer
+        run: |
+          pwsh -Command "
+            Install-Module PSScriptAnalyzer -Force -Scope CurrentUser;
+            Write-Information '✅ Installed PSScriptAnalyzer' -InformationAction Continue
+          "
+
+      # --- Run analysis --------------------------------------------------------
+      - name: Run PSScriptAnalyzer
+        run: |
+          pwsh -Command "
+            Write-Information '🔍 Running PowerShell code analysis...' -InformationAction Continue;
+            $settings = 'config/PSScriptAnalyzerSettings.psd1'
+            if (-not (Test-Path $settings)) {
+              Write-Warning 'Settings file not found — using default rules'
+              $settings = $null
+            }
+            $results = Invoke-ScriptAnalyzer -Path . -Recurse -Settings $settings -ErrorAction SilentlyContinue
+            if ($results) {
+              $results | Tee-Object -FilePath PSScriptAnalyzer-Report.txt | Format-Table
+              Write-Error '❌ ScriptAnalyzer found issues. See PSScriptAnalyzer-Report.txt for details.'
+            } else {
+              Write-Information '✅ No ScriptAnalyzer issues found.' -InformationAction Continue
+            }
+          "
+
+      # --- Upload lint report --------------------------------------------------
+      - name: Upload analysis report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ps-lint-report
+          path: PSScriptAnalyzer-Report.txt

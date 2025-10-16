@@ -12,29 +12,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # --- Checkout -----------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install PowerShell and GPG
+      # --- Install dependencies -----------------------------------------------
+      - name: Install GPG
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y powershell gpg
+          sudo apt-get install -y gpg
 
-      - name: Download build artifacts
+      # --- Download build artifacts -------------------------------------------
+      - name: Download signed artifacts
         uses: actions/download-artifact@v4
         with:
           name: pm-docs-signed
           path: docs/releases/
 
+      # --- List downloaded files ----------------------------------------------
       - name: List downloaded files
         run: ls -l docs/releases/
 
+      # --- Verify GPG signatures ----------------------------------------------
       - name: Verify signatures
         run: |
           pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ChangeRequest.pdf -Verify
           pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ImplementationPlan.pdf -Verify
 
+      # --- Verify SHA256 hashes -----------------------------------------------
       - name: Verify hashes
         run: |
           pwsh -File scripts/verify-hash.ps1 -PdfFile docs/releases/ChangeRequest.pdf

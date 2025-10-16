@@ -1,50 +1,60 @@
-name: Build & Sign Docs
+name: Build and Sign Docs
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
     paths:
       - 'docs/**/*.md'
       - 'scripts/**'
-      - 'defaults/**'
+      - 'formatters/**'
   workflow_dispatch:
 
 jobs:
-  build-sign:
+  build_sign:
     runs-on: ubuntu-latest
 
     steps:
+      # --- Checkout -----------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup PowerShell
-        uses: PowerShell/setup-pwsh@v2
-        with:
-          pwsh-version: '7.4.x'
-
-      - name: Install Pandoc and dependencies
+      # --- Install dependencies -----------------------------------------------
+      - name: Install Pandoc, TeX, and GPG
+        shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended texlive-latex-recommended gpg
+          sudo apt-get install -y pandoc texlive-xetex \
+            texlive-latex-recommended texlive-fonts-recommended gpg
 
+      # --- Normalize Markdown --------------------------------------------------
+      - name: Run Markdown Formatter
+        run: |
+          pwsh scripts/run-formatter.ps1 -Source docs `
+            -Exclude "templates/*" -InformationAction Continue `
+            | Tee-Object -FilePath logs/formatter.log
+
+      # --- Verify environment --------------------------------------------------
       - name: Verify environment
-        run: pwsh scripts/verify-env.ps1 || true
+        run: pwsh -File scripts/verify-env.ps1 || true
 
+      # --- Build PDFs ----------------------------------------------------------
       - name: Build PDFs
         run: |
-          pwsh scripts/build-doc.ps1 -SourceMd docs/examples/ChangeRequest.md
-          pwsh scripts/build-doc.ps1 -SourceMd docs/examples/ImplementationPlan.md
+          pwsh -File scripts/build-doc.ps1 -SourceMd docs/examples/ChangeRequest.md
+          pwsh -File scripts/build-doc.ps1 -SourceMd docs/examples/ImplementationPlan.md
 
-      - name: Sign and verify
+      # --- Sign and Verify PDFs ------------------------------------------------
+      - name: Sign and Verify PDFs
         run: |
-          pwsh scripts/sign-gpg.ps1 -TargetFile docs/releases/ChangeRequest.pdf
-          pwsh scripts/sign-gpg.ps1 -TargetFile docs/releases/ChangeRequest.pdf -Verify
-          pwsh scripts/sign-gpg.ps1 -TargetFile docs/releases/ImplementationPlan.pdf
-          pwsh scripts/sign-gpg.ps1 -TargetFile docs/releases/ImplementationPlan.pdf -Verify
+          pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ChangeRequest.pdf
+          pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ChangeRequest.pdf -Verify
+          pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ImplementationPlan.pdf
+          pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ImplementationPlan.pdf -Verify
 
-      - name: Upload artifacts
+      # --- Upload signed artifacts --------------------------------------------
+      - name: Upload signed artifacts
         uses: actions/upload-artifact@v4
         with:
           name: pm-docs-signed
-          path: docs/releases/*
-
+          path: docs/releases/
