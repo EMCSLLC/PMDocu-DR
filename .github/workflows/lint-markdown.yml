@@ -1,0 +1,62 @@
+name: 📝 Lint Markdown
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-markdown:
+    name: Validate Markdown Formatting
+    runs-on: windows-latest
+
+    steps:
+      - name: 🧩 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: 📦 Install markdownlint-cli2
+        shell: pwsh
+        run: |
+          npm install -g markdownlint-cli2
+          Write-Information "[ci-md] markdownlint-cli2 installed globally."
+
+      - name: 🔍 Run Markdown Linter
+        shell: pwsh
+        run: |
+          Write-Information "[ci-md] Running markdown compliance test..."
+          $EvidenceDir = 'docs/_evidence'
+          New-Item -ItemType Directory -Force -Path $EvidenceDir | Out-Null
+
+          $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+          $OutFile = Join-Path $EvidenceDir "MarkdownReport-$Timestamp.json"
+          $Config  = 'config/.markdownlint.json'
+
+          $cmd = "markdownlint-cli2 '**/*.md' '#node_modules' --config $Config --json"
+          $results = & cmd /c $cmd 2>&1
+          $results | Out-File -FilePath $OutFile -Encoding utf8
+
+          if ($results -match 'MD\d{3}') {
+              Write-Information "[ci-md] ❌ Lint issues detected. Evidence saved to $OutFile"
+              exit 1
+          } else {
+              Write-Information "[ci-md] ✅ Markdown lint passed cleanly. Evidence saved to $OutFile"
+          }
+
+      - name: 📜 Upload Markdown Evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: markdownlint-evidence
+          path: docs/_evidence/MarkdownReport-*.json
+          retention-days: 30
