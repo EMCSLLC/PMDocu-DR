@@ -12,6 +12,7 @@ Documentation and Digital Record System
 
 | Workflow | Status | Description |
 |-----------|--------|--------------|
+| 🕒 **Nightly Validation** | [![Nightly Validation](https://github.com/EMCSLLC/PMDocu-DR/actions/workflows/nightly-validate.yml/badge.svg)](https://github.com/EMCSLLC/PMDocu-DR/actions/workflows/nightly-validate.yml) | Validates folder structure nightly, regenerates evidence tree, and uploads `nightly-evidence.zip` as CI artifact (30-day retention). |
 | 🪶 **Build README** | [![Build README](https://github.com/EMCSLLC/PMDocu-DR/actions/workflows/build-readme.yml/badge.svg)](https://github.com/EMCSLLC/PMDocu-DR/actions/workflows/build-readme.yml) | Auto-generates `README.md` from a template, injects repo metadata, commits automatically, and logs evidence. |
 | 🧹 **Build & Sign Docs** | [![Build & Sign Docs](https://github.com/EMCSLLC/PMDocu-DR/actions/workflows/build-docs.yml/badge.svg)](https://github.com/EMCSLLC/PMDocu-DR/actions/workflows/build-docs.yml) | Converts Markdown → PDF → Signs with GPG → Verifies SHA-256 → Uploads signed artifacts. |
 | 🔏 **Verify Signatures** | [![Verify Signatures](https://github.com/EMCSLLC/PMDocu-DR/actions/workflows/verify-signature.yml/badge.svg)](https://github.com/EMCSLLC/PMDocu-DR/actions/workflows/verify-signature.yml) | Re-verifies Authenticode, GPG signatures, and SHA-256 hashes for all release artifacts. |
