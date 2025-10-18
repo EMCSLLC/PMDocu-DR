@@ -1,0 +1,45 @@
+name: 🪶 Build README
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      fail_on_warning:
+        description: "Fail build if README generation fails"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write   # Needed for committing updates
+
+jobs:
+  build-readme:
+    runs-on: windows-latest
+    name: Generate README from Template
+
+    steps:
+      - name: 🧩 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🧾 Generate README.md
+        shell: pwsh
+        run: |
+          Write-Information "[ci-readme] Starting build..."
+          pwsh -File scripts/build-readme.ps1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "README build failed."
+            if ('${{ github.event.inputs.fail_on_warning }}' -eq 'true') { exit 1 }
+          }
+          Write-Information "[ci-readme] Build complete."
+
+      - name: 📜 Upload README evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: readme-evidence
+          path: docs/_evidence/ReadmeBuild-*.json
+          retention-days: 30
