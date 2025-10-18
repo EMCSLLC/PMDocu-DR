@@ -3,79 +3,68 @@ name: 📝 Lint Markdown
 on:
   push:
     branches: [ main ]
+    paths:
+      - '**/*.md'
+      - '!docs/releases/**'
+      - '!docs/signed/**'
+      - '!docs/hashes/**'
+      - '.github/workflows/lint-markdown.yml'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      fail_on_warning:
-        description: 'Fail build on Markdown warnings (true/false)'
-        required: false
-        default: 'false'
 
 permissions:
   contents: read
 
 jobs:
-  lint-markdown:
-    runs-on: windows-latest
-    name: Lint Markdown Files
+  lint-md:
+    name: 🔍 Run markdownlint-cli2
+    runs-on: ubuntu-latest
 
     steps:
-      - name: 🧩 Checkout repository
+      - name: 🧭 Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: 🧰 Setup Node.js
+      - name: ⚙️ Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
 
-      - name: 🧾 Run Markdown Linter
-        shell: pwsh
+      - name: 📦 Cache npm packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json', '**/*.md') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: 🧩 Install markdownlint-cli2
         run: |
-          Write-Information "[ci-md] Running markdown compliance test..."
-          $EvidenceDir = 'docs/_evidence'
-          New-Item -ItemType Directory -Force -Path $EvidenceDir | Out-Null
+          npm install -g markdownlint-cli2 markdownlint-cli2-formatter-pretty
 
-          $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-          $OutFile = Join-Path $EvidenceDir "MarkdownReport-$Timestamp.json"
-          $Config = 'config/.markdownlint.json'
-
-          # Run CLI cleanly and capture JSON
-          $results = & npx markdownlint-cli2 '**/*.md' '#node_modules' --config $Config --json 2>$null | Out-String
-          if ([string]::IsNullOrWhiteSpace($results)) { $results = '[]' }
-
-          $results | Out-File -FilePath $OutFile -Encoding utf8 -NoNewline
-          Write-Information "[ci-md] Evidence written to $OutFile"
-
-          # Fail if any lint issues
-          if ($results -match 'MD\d{3}') {
-              Write-Error "[ci-md] ❌ Markdown lint issues detected."
-              exit 1
-          } else {
-              Write-Information "[ci-md] ✅ Markdown lint passed cleanly."
-          }
-
-      - name: 🔍 Validate JSON Evidence
-        shell: pwsh
+      - name: 🧪 Run Markdown linter
+        id: lint
         run: |
-          Write-Information "[ci-md] Verifying JSON evidence integrity..."
-          $files = Get-ChildItem 'docs/_evidence' -Filter 'MarkdownReport-*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $files) { Write-Error "[ci-md] ❌ No JSON evidence found."; exit 1 }
+          set -e
+          markdownlint-cli2 "**/*.md" "#!docs/releases/**" "#!docs/signed/**" "#!docs/hashes/**" --formatter markdownlint-cli2-formatter-pretty > lint-md.log || true
 
-          try {
-              $null = Get-Content $files.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-              Write-Information "[ci-md] ✅ $($files.Name) is valid JSON."
-          }
-          catch {
-              Write-Error "[ci-md] ❌ Invalid JSON format in $($files.Name)."
-              exit 1
-          }
+          if [ -s lint-md.log ]; then
+            echo "Markdown issues found:"
+            cat lint-md.log
+            exit 1
+          else
+            echo "No Markdown issues detected." > lint-md.log
+          fi
 
-      - name: 📜 Upload Markdown Evidence
+      - name: 📦 Upload lint log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: markdown-evidence
-          path: docs/_evidence/MarkdownReport-*.json
-          retention-days: 30
+          name: lint-markdown-report
+          path: lint-md.log
+
+      - name: 🧾 Summary
+        if: always()
+        run: |
+          echo "## 📝 Markdown Lint Summary" >> $GITHUB_STEP_SUMMARY
+          cat lint-md.log >> $GITHUB_STEP_SUMMARY

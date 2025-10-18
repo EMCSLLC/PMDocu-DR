@@ -3,71 +3,123 @@ name: 🪶 Build README
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    paths:
+      - 'docs/_templates/README.template.md'
+      - '.github/workflows/build-readme.yml'
   workflow_dispatch:
-    inputs:
-      fail_on_warning:
-        description: "Fail build if README generation fails"
-        required: false
-        default: "false"
 
 permissions:
-  contents: write   # Needed for committing updates
+  contents: write
 
 jobs:
   build-readme:
-    runs-on: windows-latest
-    name: Generate README from Template
+    name: 🪶 Generate and Commit README
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
 
     steps:
-      - name: 🧩 Checkout repository
+      - name: 🧭 Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Needed for git describe to see tags
 
-      - name: 🧾 Generate README.md
-        shell: pwsh
+      - name: ⚙️ Setup PowerShell
+        uses: PowerShell/PowerShell@v1
+        with:
+          pwsh-version: '7.5.0'
+
+      - name: 🧩 Generate README.md from template
+        id: generate
         run: |
-          Write-Information "[ci-readme] Starting build..."
-          pwsh -File scripts/build-readme.ps1
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "README build failed."
-            if ('${{ github.event.inputs.fail_on_warning }}' -eq 'true') { exit 1 }
-          }
-          Write-Information "[ci-readme] Build complete."
+          $ErrorActionPreference = 'Stop'
 
-      - name: 🔍 Validate README Build Evidence
-        shell: pwsh
-        run: |
-          Write-Information "[ci-readme] Verifying JSON evidence integrity..."
-          $files = Get-ChildItem 'docs/_evidence' -Filter 'ReadmeBuild-*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $files) { Write-Error "[ci-readme] ❌ README build evidence missing."; exit 1 }
+          $templatePath = 'docs/_templates/README.template.md'
+          $outputPath   = 'README.md'
 
-          try {
-              $null = Get-Content $files.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-              Write-Information "[ci-readme] ✅ $($files.Name) is valid JSON."
-          } catch {
-              Write-Error "[ci-readme] ❌ Invalid or malformed README evidence file."
-              exit 1
+          if (-not (Test-Path $templatePath)) {
+            throw "Template not found: $templatePath"
           }
 
-      - name: 📜 Upload README evidence
+          $template = Get-Content -Path $templatePath -Raw
+
+          # --- Gather repo metadata ---
+          $repoOwner  = "${{ github.repository_owner }}"
+          $repoName   = (Split-Path ${{ github.repository }} -Leaf)
+          $buildDate  = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss UTC')
+          $nextReview = (Get-Date).AddMonths(6).ToString('yyyy-MM')
+
+          # --- Detect version from Git tag ---
+          $gitTag = (git describe --tags --abbrev=0 2>$null)
+          if (-not $gitTag) {
+            Write-Output "No Git tag found; defaulting version to v1.0"
+            $gitTag = 'v1.0'
+          }
+
+          # --- Perform placeholder injection ---
+          $output = $template `
+            -replace '{{REPO_OWNER}}', $repoOwner `
+            -replace '{{REPO_NAME}}', $repoName `
+            -replace '{{VERSION}}', $gitTag `
+            -replace '{{BUILD_DATE}}', $buildDate `
+            -replace '{{NEXT_REVIEW}}', $nextReview
+
+          $output | Out-File -FilePath $outputPath -Encoding UTF8 -Force
+
+          # --- Capture SHA for evidence ---
+          $sha = (Get-FileHash -Algorithm SHA256 -Path $outputPath).Hash
+          $evidence = @{
+            file = $outputPath
+            generated = $buildDate
+            commit = '${{ github.sha }}'
+            hash = $sha
+            repo = '${{ github.repository }}'
+            version = $gitTag
+          }
+
+          $evidenceDir = "docs/_evidence"
+          if (-not (Test-Path $evidenceDir)) {
+            New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
+          }
+
+          $jsonPath = Join-Path $evidenceDir ("ReadmeBuild-{0}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+          $evidence | ConvertTo-Json | Out-File -FilePath $jsonPath -Encoding UTF8 -Force
+
+          Write-Output "README_BUILT=$outputPath"
+          Write-Output "EVIDENCE_FILE=$jsonPath"
+
+      - name: 🧾 Commit updated README (if changed)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if (git diff --quiet README.md) {
+            Write-Output "No changes detected in README.md — skipping commit."
+          }
+          else {
+            git add README.md docs/_evidence/
+            git commit -m "🪶 Auto-update README from template (${{ github.sha }}) [skip ci]" || exit 0
+            git push
+          }
+
+      - name: 📦 Upload Evidence Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: readme-evidence
+          name: readme-build-evidence
           path: docs/_evidence/ReadmeBuild-*.json
-          retention-days: 30
-      - name: 🔍 Validate README Build Evidence
-        shell: pwsh
+
+      - name: 🧾 Summary
         run: |
-          Write-Information "[ci-readme] Verifying JSON evidence integrity..."
-          $files = Get-ChildItem 'docs/_evidence' -Filter 'ReadmeBuild-*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $files) { Write-Error "[ci-readme] ❌ README build evidence missing."; exit 1 }
-          try {
-              $null = Get-Content $files.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-              Write-Information "[ci-readme] ✅ $($files.Name) is valid JSON."
-          } catch {
-              Write-Error "[ci-readme] ❌ Invalid or malformed README evidence file."
-              exit 1
-          }
+          $gitTag = (git describe --tags --abbrev=0 2>$null) ?? 'v1.0'
+          $summary = @"
+          ## 🪶 README Build Summary
+          - Repository: ${{ github.repository }}
+          - Commit: ${{ github.sha }}
+          - Version: $gitTag
+          - Generated: $(Get-Date -Format 'u')
+          - Evidence: docs/_evidence/ReadmeBuild-*.json
+
+          ✅ README rebuilt successfully.
+          "@
+          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8

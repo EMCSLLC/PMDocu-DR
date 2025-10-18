@@ -1,70 +1,98 @@
 <#
 .SYNOPSIS
-  Converts Markdown → PDF, applies header/footer, and generates SHA256 hash.
-  Falls back to text-only PDF if TeX engine not found.
+  Builds a Markdown document into a PDF and optionally signs it.
+
+.DESCRIPTION
+  Converts a Markdown (.md) file to PDF using pandoc + xelatex
+  (Unicode-safe, supports emoji and symbols).
+  Can optionally GPG-sign and verify hashes.
+  Produces CI-friendly structured output.
+
+.PARAMETER File
+  Path to the Markdown source file.
+
+.PARAMETER Out
+  Output folder for the PDF (default: "docs/releases").
+
+.PARAMETER Font
+  Main font for the PDF (default: "DejaVu Sans").
+
+.PARAMETER Sign
+  If specified, runs sign-gpg.ps1 after building the PDF.
+
+.EXAMPLE
+  pwsh -NoProfile -File scripts/build-doc.ps1 `
+    -File docs/pm/ChangeRequest.md -Sign -Verbose
 #>
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$SourceMd,
-    [string]$OutDir = "docs/releases",
-    [switch]$NoFormat
+  [Parameter(Mandatory)]
+  [string]$File,
+  [string]$Out = "docs/releases",
+  [string]$Font = "DejaVu Sans",
+  [ValidateSet('tectonic', 'xelatex', 'lualatex')]
+  [string]$Engine = 'tectonic',
+  [switch]$Sign
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-$ScriptDir = Split-Path -Parent $PSCommandPath
-$Templates = Join-Path $ScriptDir "../docs/templates"
-$Header = Join-Path $Templates "header.md"
-$Footer = Join-Path $Templates "footer.md"
-
-if (-not (Test-Path $SourceMd)) { throw "Source file not found: $SourceMd" }
-if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Force -Path $OutDir | Out-Null }
-
-if (-not $NoFormat) {
-    $formatter = Join-Path $ScriptDir "run-formatter.ps1"
-    if (Test-Path $formatter) { & $formatter -Source $SourceMd }
-}
-
-$temp = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName() + ".md")
-@(
-    if (Test-Path $Header) { Get-Content $Header -Raw } else { "" }
-    Get-Content $SourceMd -Raw
-    if (Test-Path $Footer) { Get-Content $Footer -Raw } else { "" }
-) | Set-Content -Encoding UTF8 -Path $temp
-
-$pdfName = (Split-Path $SourceMd -LeafBase) + ".pdf"
-$pdfFile = Join-Path $OutDir $pdfName
-
-# --- Detect TeX / PDF engine ---
-if (Get-Command xelatex -ErrorAction SilentlyContinue) {
-    $engine = 'xelatex'
-} elseif (Get-Command wkhtmltopdf -ErrorAction SilentlyContinue) {
-    $engine = 'wkhtmltopdf'
-} else {
-    $engine = $null
-}
+$ErrorActionPreference = "Stop"
 
 try {
-    if ($engine) {
-        Write-Information "📄 Converting $SourceMd → $pdfFile (engine: $engine)" -InformationAction Continue
-        pandoc $temp -o $pdfFile --standalone --pdf-engine=$engine --quiet
-    } else {
-        Write-Warning "⚠️ No TeX or HTML PDF engine found — creating placeholder text PDF."
-        $content = "[PMDocu-DR Placeholder PDF — install TeX for full rendering]`n`n" + (Get-Content -Raw $temp)
-        Set-Content -Path $pdfFile -Value $content -Encoding UTF8
+  $File = (Resolve-Path $File).Path
+  if (-not (Test-Path $Out)) {
+    New-Item -ItemType Directory -Force -Path $Out | Out-Null
+  }
+
+  $Pdf = Join-Path $Out ("{0}.pdf" -f [IO.Path]::GetFileNameWithoutExtension($File))
+
+  Write-Verbose "Building PDF to $Pdf"
+
+  $pandocArgs = @(
+    $File,
+    "--from=markdown",
+    "--to=pdf",
+    "--pdf-engine=$Engine",
+    "-V", "mainfont=$Font",
+    "-V", "geometry:margin=1in",
+    "--metadata", "title=$(Split-Path $File -LeafBase)",
+    "-o", $Pdf
+  )
+
+  $process = Start-Process -FilePath "pandoc" -ArgumentList $pandocArgs `
+    -Wait -NoNewWindow -PassThru
+
+  if ($process.ExitCode -ne 0) {
+    throw "Pandoc exited with code $($process.ExitCode)"
+  }
+
+  if (-not (Test-Path $Pdf)) {
+    throw "PDF not found after build: $Pdf"
+  }
+
+  Write-Output ("PDF_BUILT={0}" -f $Pdf)
+
+  if ($Sign) {
+    $signScript = Join-Path $PSScriptRoot "sign-gpg.ps1"
+    if (-not (Test-Path $signScript)) {
+      throw "Signing script missing: $signScript"
     }
 
-    if (-not (Test-Path $pdfFile)) { throw "PDF not created: $pdfFile" }
+    Write-Verbose "Signing PDF..."
+    & $signScript -InputFile $Pdf
+    if ($LASTEXITCODE -ne 0) {
+      throw "Signing failed for $Pdf"
+    }
 
-    $hashFile = "$pdfFile.sha256"
-    $hash = (Get-FileHash -Algorithm SHA256 $pdfFile).Hash
-    $hash | Out-File -Encoding ascii $hashFile
+    Write-Output ("PDF_SIGNED={0}" -f $Pdf)
+  }
 
-    Write-Information "✅ PDF built: $pdfFile" -InformationAction Continue
-    Write-Information "🔐 SHA256  : $hashFile" -InformationAction Continue
-}
-finally {
-    Remove-Item -Path $temp -Force -ErrorAction SilentlyContinue
+  # Future step: hash verification
+  # & "$PSScriptRoot/verify-hash.ps1" -InputFile $Pdf -Quiet
+
+  Write-Output "STATUS=SUCCESS"
+} catch {
+  Write-Error ("STATUS=FAILURE | MESSAGE={0}" -f $_.Exception.Message)
+  exit 1
 }

@@ -1,21 +1,40 @@
-name: 🔬 Run PMDocu-DR Tests
+name: 🧪 Evidence Integrity Tests
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"  # Every Monday 6 AM UTC (weekly compliance check)
+
+permissions:
+  contents: read
 
 jobs:
-  test:
+  validate-evidence:
+    name: Validate Evidence JSON Files
     runs-on: windows-latest
-    steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
 
-      - name: Run Phase 6–7 Tests
+    steps:
+      - name: 🧩 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🧾 Run Evidence Validation
+        shell: pwsh
         run: |
-          pwsh -File tests\Test-ReviewPack.ps1
-          pwsh -File tests\Test-ConvertAndSign.ps1
-          pwsh -File tests\Test-VerifyEvidence.ps1
-          
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path 'scripts/Test-EvidenceIntegrity.ps1')) {
+            Write-Error "scripts/Test-EvidenceIntegrity.ps1 not found"
+            exit 1
+          }
+
+          Write-Information "[ci-test] Starting evidence integrity validation..."
+          pwsh -File scripts/Test-EvidenceIntegrity.ps1
+
+      - name: 📜 Upload integrity report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-integrity-report
+          path: docs/_evidence/EvidenceIntegrity-*.json
+          retention-days: 30

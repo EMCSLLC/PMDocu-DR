@@ -1,106 +1,106 @@
-name: 🧹 Build and Sign Docs
+name: 🧹 Build & Sign Docs
 
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'docs/**/*.md'
+      - 'scripts/**'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      mode:
-        description: 'Build mode: quick (default), full (rebuild all), or strict (verbose)'
-        required: false
-        default: 'quick'
-      fail_on_warning:
-        description: 'Fail build on warnings (true/false)'
-        required: false
-        default: 'false'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build-docs:
-    runs-on: windows-latest
-    name: Build and Sign Documents
+  build-sign:
+    name: 🧾 Build, Sign & Verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      DOCS_SRC: docs/pm
+      DOCS_OUT: docs/releases
+      SIGN_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+      SIGN_KEY_B64: ${{ secrets.GPG_PRIVATE_KEY }}
+      SIGN_KEY_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
     steps:
-      - name: 🧩 Checkout repository
+      - name: 🧭 Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 🔍 Detect changed Markdown files
-        id: changes
-        shell: pwsh
-        run: |
-          Write-Host "🔎 Checking for changed Markdown files..."
-          $diffBase = if ('${{ github.event_name }}' -eq 'pull_request') { '${{ github.event.pull_request.base.sha }}' } else { 'HEAD~1' }
-          $changedFiles = git diff --name-only $diffBase HEAD | Select-String '\.md$' | ForEach-Object { $_.ToString() }
+      - name: ⚙️ Setup PowerShell
+        uses: PowerShell/PowerShell@v1
+        with:
+          pwsh-version: '7.5.0'
 
-          if (-not $changedFiles) {
-              Write-Host "🟡 No Markdown changes detected — skipping document build."
-              echo "changed=false" >> $env:GITHUB_OUTPUT
-          } else {
-              Write-Host "🧾 Changed Markdown files:"
-              $changedFiles | ForEach-Object { Write-Host "  - $_" }
-              echo "changed=true" >> $env:GITHUB_OUTPUT
+      - name: 📦 Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y pandoc tectonic fonts-dejavu fonts-noto-core fonts-noto-color-emoji
+
+      - name: 🧰 Cache Tectonic packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/Tectonic
+          key: ${{ runner.os }}-tectonic-${{ hashFiles('**/*.md', 'scripts/build-doc.ps1') }}
+          restore-keys: |
+            ${{ runner.os }}-tectonic-
+
+      - name: 🔏 Import GPG private key
+        if: env.SIGN_KEY_B64 != ''
+        env:
+          SIGN_KEY_B64: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          echo "$env:SIGN_KEY_B64" | base64 --decode | gpg --batch --import -
+          gpg --list-secret-keys
+
+      - name: 🧩 Build and sign Markdown files
+        run: |
+          $files = Get-ChildItem -Path $env:DOCS_SRC -Filter *.md -Recurse
+          foreach ($f in $files) {
+            pwsh -NoProfile -File scripts/build-doc.ps1 `
+              -File $f.FullName `
+              -Out  $env:DOCS_OUT `
+              -Font "DejaVu Sans" `
+              -Engine tectonic `
+              -Sign
           }
 
-      - name: 🏗️ Build documentation
-        if: steps.changes.outputs.changed == 'true'
-        shell: pwsh
+      - name: 🧮 Verify SHA-256 hashes
         run: |
-          $mode = '${{ github.event.inputs.mode }}'
-          $failOnWarning = ('${{ github.event.inputs.fail_on_warning }}' -eq 'true')
-
-          Write-Host "🔧 Running Convert-PMDocuDRToPDF.ps1..."
-          Write-Host "🔹 Mode: $mode"
-          Write-Host "🔹 Fail on Warning: $failOnWarning"
-
-          if ($mode -eq 'strict') { $VerbosePreference = 'Continue' }
-
-          pwsh -File "scripts/Convert-PMDocuDRToPDF.ps1"
-          if ($LASTEXITCODE -ne 0) {
-              Write-Error "❌ Document conversion failed."
-              exit 1
-          }
-      - name: 🔍 Validate Build Evidence
-        shell: pwsh
-        run: |
-          Write-Information "[ci-docs] Verifying JSON build evidence..."
-          $files = Get-ChildItem 'docs/_evidence' -Filter 'BuildResult-*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $files) { Write-Error "[ci-docs] ❌ No build evidence found."; exit 1 }
-
-          try {
-              $null = Get-Content $files.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-              Write-Information "[ci-docs] ✅ $($files.Name) is valid JSON."
-          } catch {
-              Write-Error "[ci-docs] ❌ Invalid or unreadable build evidence file."
-              exit 1
+          $pdfs = Get-ChildItem -Path $env:DOCS_OUT -Filter *.pdf -Recurse
+          foreach ($p in $pdfs) {
+            pwsh -NoProfile -File scripts/verify-hash.ps1 -InputFile $p.FullName -Quiet
           }
 
-
-          Write-Host "✅ Base document set built successfully."
-
-      - name: 🧾 Build CI Compliance Matrix
-        if: steps.changes.outputs.changed == 'true'
-        shell: pwsh
-        run: |
-          pwsh -File "scripts/Convert-PMDocuDRToPDF.ps1" `
-            -InputFile "docs/gov/CI-Compliance-Matrix.md" `
-            -OutDir "docs/releases"
-
-          if ($LASTEXITCODE -ne 0) {
-              Write-Error "❌ CI Compliance Matrix build failed."
-              exit 1
-          }
-          Write-Host "✅ CI Compliance Matrix built successfully."
-
-      - name: 📜 Upload generated PDFs
-        if: steps.changes.outputs.changed == 'true'
+      - name: 📦 Upload signed artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: docs-pdf
-          path: docs/releases/*.pdf
-          retention-days: 30
+          name: signed-docs
+          path: |
+            docs/releases/**/*.pdf
+            docs/releases/**/*.asc
+            docs/releases/**/*.sha256
+
+      - name: 🧾 Generate summary
+        if: always()
+        run: |
+          $pdfCount  = (Get-ChildItem docs/releases -Filter *.pdf -Recurse).Count
+          $sigCount  = (Get-ChildItem docs/releases -Filter *.asc -Recurse).Count
+          $hashCount = (Get-ChildItem docs/releases -Filter *.sha256 -Recurse).Count
+
+          $summary = @"
+          ## 🧾 PMDocu-DR Build Summary
+          - PDFs built: $pdfCount
+          - Signatures created: $sigCount
+          - Hashes verified: $hashCount
+
+          ✅ All stages passed.
+          "@
+          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8

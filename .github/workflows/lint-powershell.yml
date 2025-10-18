@@ -3,6 +3,10 @@ name: 🧩 Lint PowerShell
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'scripts/**/*.ps1'
+      - 'modules/**/*.ps1'
+      - '.github/workflows/lint-powershell.yml'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -11,83 +15,69 @@ permissions:
   contents: read
 
 jobs:
-  lint-powershell:
-    name: Run ScriptAnalyzer
-    runs-on: windows-latest
+  lint:
+    name: 🔍 Run PSScriptAnalyzer
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
 
     steps:
-      - name: 🧩 Checkout repository
+      - name: 🧭 Checkout repository
         uses: actions/checkout@v4
+
+      - name: ⚙️ Setup PowerShell
+        uses: PowerShell/PowerShell@v1
         with:
-          fetch-depth: 0
+          pwsh-version: '7.5.0'
 
-      - name: 🔍 Detect changed PowerShell files
-        id: detect
-        shell: pwsh
+      - name: 📦 Cache PowerShell modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/powershell/Modules
+          key: ${{ runner.os }}-psmodules-${{ hashFiles('scripts/**/*.ps1', 'modules/**/*.ps1') }}
+          restore-keys: |
+            ${{ runner.os }}-psmodules-
+
+      - name: 🧩 Install PSScriptAnalyzer
         run: |
-          $changed = git diff --name-only HEAD~1 HEAD | Where-Object { $_ -match '\.(ps1|psm1|psd1)$' }
-          if ($changed) {
-              Write-Output "changed=true" >> $env:GITHUB_OUTPUT
-              Write-Host "[lint] PowerShell changes detected: $($changed -join ', ')"
-          } else {
-              Write-Output "changed=false" >> $env:GITHUB_OUTPUT
-              Write-Host "[lint] No PowerShell changes detected."
-          }
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
 
-      - name: 🔧 Run PSScriptAnalyzer
-        if: steps.detect.outputs.changed == 'true'
-        shell: pwsh
+      - name: 🧪 Run analyzer
+        id: analyze
         run: |
-          $settings = 'config\PSScriptAnalyzerSettings.psd1'
-          $outDir   = 'docs\_evidence'
-          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-          $outFile  = Join-Path $outDir ("AnalyzerReport-{0:yyyyMMdd-HHmmss}.json" -f (Get-Date))
+          $ErrorActionPreference = 'Stop'
+          $paths = @('scripts','modules')
+          $results = Invoke-ScriptAnalyzer -Path $paths -Recurse -ErrorAction Stop
 
-          Write-Host "[lint] Running ScriptAnalyzer..."
-          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Settings $settings -Verbose:$false
-          $results | ConvertTo-Json -Depth 4 | Out-File -FilePath $outFile -Encoding UTF8
+          if ($results) {
+            $errorCount   = ($results | Where-Object { $_.Severity -eq 'Error'   }).Count
+            $warningCount = ($results | Where-Object { $_.Severity -eq 'Warning' }).Count
 
-          if (-not $results) {
-              Write-Host "[lint] ✅ No issues found."
-          } else {
-              $errors = $results | Where-Object { $_.Severity -eq 'Error' }
-              if ($errors) {
-                  Write-Error "❌ Lint errors found."
-                  exit 1
-              } else {
-                  Write-Host "[lint] ⚠️ Warnings found but no fatal issues."
-              }
-          }
+            $results | Format-Table RuleName, Severity, ScriptName, Line, Message | Out-String | Tee-Object lint.log | Write-Output
 
-      - name: 🔍 Validate Analyzer Evidence
-        shell: pwsh
-        run: |
-          Write-Information "[ci-ps] Validating AnalyzerReport JSON..."
-          $files = Get-ChildItem 'docs/_evidence' -Filter 'AnalyzerReport-*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $files) { Write-Error "[ci-ps] ❌ AnalyzerReport evidence missing."; exit 1 }
-
-          try {
-              $null = Get-Content $files.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-              Write-Information "[ci-ps] ✅ $($files.Name) passed JSON verification."
-          } catch {
-              Write-Error "[ci-ps] ❌ Invalid AnalyzerReport JSON format."
+            if ($errorCount -gt 0 -or $warningCount -gt 0) {
+              Write-Error "Lint failed: $errorCount errors, $warningCount warnings"
               exit 1
+            }
+          }
+          else {
+            "No lint issues detected." | Tee-Object lint.log | Write-Output
           }
 
-      - name: 💤 Skip (no PowerShell changes)
-        if: steps.detect.outputs.changed == 'false'
-        shell: pwsh
-        run: |
-          $outDir = 'docs\_evidence'
-          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-          $outFile = Join-Path $outDir ("AnalyzerReport-{0:yyyyMMdd-HHmmss}.json" -f (Get-Date))
-          @{ status = 'skipped'; reason = 'No PowerShell file changes detected.'; timestamp = (Get-Date).ToString('u') } |
-          ConvertTo-Json -Depth 4 | Out-File -Encoding utf8 $outFile
-          Write-Host "[lint] 💤 Lint skipped; no changes. Evidence saved to $outFile."
-
-      - name: 📜 Upload analyzer evidence
+      - name: 📦 Upload lint log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: analyzer-evidence
-          path: docs/_evidence/AnalyzerReport-*.json
-          retention-days: 30
+          name: lint-report
+          path: lint.log
+
+      - name: 🧾 Summary
+        if: always()
+        run: |
+          $log = Get-Content lint.log -Raw
+          $summary = @"
+          ## 🔍 PowerShell Lint Summary
+          $log
+          "@
+          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
