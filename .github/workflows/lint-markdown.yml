@@ -6,14 +6,19 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      fail_on_warning:
+        description: 'Fail build on Markdown warnings (true/false)'
+        required: false
+        default: 'false'
 
 permissions:
   contents: read
 
 jobs:
   lint-markdown:
-    name: Validate Markdown Formatting
     runs-on: windows-latest
+    name: Lint Markdown Files
 
     steps:
       - name: 🧩 Checkout repository
@@ -21,18 +26,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: ⚙️ Setup Node.js
+      - name: 🧰 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22.x'
+          node-version: '22'
 
-      - name: 📦 Install markdownlint-cli2
-        shell: pwsh
-        run: |
-          npm install -g markdownlint-cli2
-          Write-Information "[ci-md] markdownlint-cli2 installed globally."
-
-      - name: 🔍 Run Markdown Linter
+      - name: 🧾 Run Markdown Linter
         shell: pwsh
         run: |
           Write-Information "[ci-md] Running markdown compliance test..."
@@ -41,22 +40,42 @@ jobs:
 
           $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
           $OutFile = Join-Path $EvidenceDir "MarkdownReport-$Timestamp.json"
-          $Config  = 'config/.markdownlint.json'
+          $Config = 'config/.markdownlint.json'
 
-          $cmd = "markdownlint-cli2 '**/*.md' '#node_modules' --config $Config --json"
-          $results = & cmd /c $cmd 2>&1
-          $results | Out-File -FilePath $OutFile -Encoding utf8
+          # Run CLI cleanly and capture JSON
+          $results = & npx markdownlint-cli2 '**/*.md' '#node_modules' --config $Config --json 2>$null | Out-String
+          if ([string]::IsNullOrWhiteSpace($results)) { $results = '[]' }
 
+          $results | Out-File -FilePath $OutFile -Encoding utf8 -NoNewline
+          Write-Information "[ci-md] Evidence written to $OutFile"
+
+          # Fail if any lint issues
           if ($results -match 'MD\d{3}') {
-              Write-Information "[ci-md] ❌ Lint issues detected. Evidence saved to $OutFile"
+              Write-Error "[ci-md] ❌ Markdown lint issues detected."
               exit 1
           } else {
-              Write-Information "[ci-md] ✅ Markdown lint passed cleanly. Evidence saved to $OutFile"
+              Write-Information "[ci-md] ✅ Markdown lint passed cleanly."
+          }
+
+      - name: 🔍 Validate JSON Evidence
+        shell: pwsh
+        run: |
+          Write-Information "[ci-md] Verifying JSON evidence integrity..."
+          $files = Get-ChildItem 'docs/_evidence' -Filter 'MarkdownReport-*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $files) { Write-Error "[ci-md] ❌ No JSON evidence found."; exit 1 }
+
+          try {
+              $null = Get-Content $files.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+              Write-Information "[ci-md] ✅ $($files.Name) is valid JSON."
+          }
+          catch {
+              Write-Error "[ci-md] ❌ Invalid JSON format in $($files.Name)."
+              exit 1
           }
 
       - name: 📜 Upload Markdown Evidence
         uses: actions/upload-artifact@v4
         with:
-          name: markdownlint-evidence
+          name: markdown-evidence
           path: docs/_evidence/MarkdownReport-*.json
           retention-days: 30

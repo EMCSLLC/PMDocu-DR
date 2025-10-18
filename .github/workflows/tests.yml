@@ -1,0 +1,21 @@
+name: 🔬 Run PMDocu-DR Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Run Phase 6–7 Tests
+        run: |
+          pwsh -File tests\Test-ReviewPack.ps1
+          pwsh -File tests\Test-ConvertAndSign.ps1
+          pwsh -File tests\Test-VerifyEvidence.ps1
+          

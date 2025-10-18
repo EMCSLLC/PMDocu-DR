@@ -37,9 +37,37 @@ jobs:
           }
           Write-Information "[ci-readme] Build complete."
 
+      - name: 🔍 Validate README Build Evidence
+        shell: pwsh
+        run: |
+          Write-Information "[ci-readme] Verifying JSON evidence integrity..."
+          $files = Get-ChildItem 'docs/_evidence' -Filter 'ReadmeBuild-*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $files) { Write-Error "[ci-readme] ❌ README build evidence missing."; exit 1 }
+
+          try {
+              $null = Get-Content $files.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+              Write-Information "[ci-readme] ✅ $($files.Name) is valid JSON."
+          } catch {
+              Write-Error "[ci-readme] ❌ Invalid or malformed README evidence file."
+              exit 1
+          }
+
       - name: 📜 Upload README evidence
         uses: actions/upload-artifact@v4
         with:
           name: readme-evidence
           path: docs/_evidence/ReadmeBuild-*.json
           retention-days: 30
+      - name: 🔍 Validate README Build Evidence
+        shell: pwsh
+        run: |
+          Write-Information "[ci-readme] Verifying JSON evidence integrity..."
+          $files = Get-ChildItem 'docs/_evidence' -Filter 'ReadmeBuild-*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $files) { Write-Error "[ci-readme] ❌ README build evidence missing."; exit 1 }
+          try {
+              $null = Get-Content $files.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+              Write-Information "[ci-readme] ✅ $($files.Name) is valid JSON."
+          } catch {
+              Write-Error "[ci-readme] ❌ Invalid or malformed README evidence file."
+              exit 1
+          }

@@ -1,47 +1,77 @@
-name: Verify Signatures
+name: 🔏 Verify Signatures
 
 on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Build and Sign Docs"]
-    types:
-      - completed
+    inputs:
+      mode:
+        description: 'Verification mode: quick, full, or strict'
+        required: false
+        default: 'quick'
+      fail_on_warning:
+        description: 'Fail workflow on warnings (true/false)'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
 
 jobs:
-  verify:
-    runs-on: ubuntu-latest
+  verify-signature:
+    runs-on: windows-latest
+    name: Verify Artifact Signatures
 
     steps:
-      # --- Checkout -----------------------------------------------------------
-      - name: Checkout repository
+      - name: 🧩 Checkout repository
         uses: actions/checkout@v4
-
-      # --- Install dependencies -----------------------------------------------
-      - name: Install GPG
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gpg
-
-      # --- Download build artifacts -------------------------------------------
-      - name: Download signed artifacts
-        uses: actions/download-artifact@v4
         with:
-          name: pm-docs-signed
-          path: docs/releases/
+          fetch-depth: 0
 
-      # --- List downloaded files ----------------------------------------------
-      - name: List downloaded files
-        run: ls -l docs/releases/
-
-      # --- Verify GPG signatures ----------------------------------------------
-      - name: Verify signatures
+      - name: 🔏 Verify signed outputs
+        shell: pwsh
         run: |
-          pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ChangeRequest.pdf -Verify
-          pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ImplementationPlan.pdf -Verify
+          $mode = '${{ github.event.inputs.mode }}'
+          $failOnWarning = ('${{ github.event.inputs.fail_on_warning }}' -eq 'true')
+          Write-Host "🔍 Running Verify-PMDocuDRSignatures.ps1..."
+          Write-Host "🔹 Mode: $mode"
+          Write-Host "🔹 Fail on Warning: $failOnWarning"
 
-      # --- Verify SHA256 hashes -----------------------------------------------
-      - name: Verify hashes
+          if ($mode -eq 'strict') { $VerbosePreference = 'Continue' }
+
+          $result = pwsh -File scripts\Verify-PMDocuDRSignatures.ps1
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "❌ Signature verification failed."
+              exit 1
+          }
+
+          if ($failOnWarning -and ($result -match 'Warning')) {
+              Write-Error "⚠️ Signature warnings detected (strict mode)."
+              exit 1
+          }
+
+          Write-Host "✅ Signature verification complete."
+
+      - name: 📜 Upload verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: signature-verification
+          path: docs/_evidence/VerifyResult-*.json
+          retention-days: 30
+
+      - name: 🔍 Validate Signature Evidence
+        shell: pwsh
         run: |
-          pwsh -File scripts/verify-hash.ps1 -PdfFile docs/releases/ChangeRequest.pdf
-          pwsh -File scripts/verify-hash.ps1 -PdfFile docs/releases/ImplementationPlan.pdf
+          Write-Information "[ci-verify] Checking JSON integrity for signature verification..."
+          $files = Get-ChildItem 'docs/_evidence' -Filter 'VerifyResult-*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $files) { Write-Error "[ci-verify] ❌ No VerifyResult evidence found."; exit 1 }
+
+          try {
+              $null = Get-Content $files.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+              Write-Information "[ci-verify] ✅ $($files.Name) is valid JSON."
+          } catch {
+              Write-Error "[ci-verify] ❌ Evidence file invalid JSON."
+              exit 1
+          }

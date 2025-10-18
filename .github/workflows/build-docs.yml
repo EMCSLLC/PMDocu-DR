@@ -1,60 +1,106 @@
-name: Build and Sign Docs
+name: 🧹 Build and Sign Docs
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'docs/**/*.md'
-      - 'scripts/**'
-      - 'formatters/**'
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Build mode: quick (default), full (rebuild all), or strict (verbose)'
+        required: false
+        default: 'quick'
+      fail_on_warning:
+        description: 'Fail build on warnings (true/false)'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
 
 jobs:
-  build_sign:
-    runs-on: ubuntu-latest
+  build-docs:
+    runs-on: windows-latest
+    name: Build and Sign Documents
 
     steps:
-      # --- Checkout -----------------------------------------------------------
-      - name: Checkout repository
+      - name: 🧩 Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # --- Install dependencies -----------------------------------------------
-      - name: Install Pandoc, TeX, and GPG
-        shell: bash
+      - name: 🔍 Detect changed Markdown files
+        id: changes
+        shell: pwsh
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pandoc texlive-xetex \
-            texlive-latex-recommended texlive-fonts-recommended gpg
+          Write-Host "🔎 Checking for changed Markdown files..."
+          $diffBase = if ('${{ github.event_name }}' -eq 'pull_request') { '${{ github.event.pull_request.base.sha }}' } else { 'HEAD~1' }
+          $changedFiles = git diff --name-only $diffBase HEAD | Select-String '\.md$' | ForEach-Object { $_.ToString() }
 
-      # --- Normalize Markdown --------------------------------------------------
-      - name: Run Markdown Formatter
+          if (-not $changedFiles) {
+              Write-Host "🟡 No Markdown changes detected — skipping document build."
+              echo "changed=false" >> $env:GITHUB_OUTPUT
+          } else {
+              Write-Host "🧾 Changed Markdown files:"
+              $changedFiles | ForEach-Object { Write-Host "  - $_" }
+              echo "changed=true" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: 🏗️ Build documentation
+        if: steps.changes.outputs.changed == 'true'
+        shell: pwsh
         run: |
-          pwsh scripts/run-formatter.ps1 -Source docs `
-            -Exclude "templates/*" -InformationAction Continue `
-            | Tee-Object -FilePath logs/formatter.log
+          $mode = '${{ github.event.inputs.mode }}'
+          $failOnWarning = ('${{ github.event.inputs.fail_on_warning }}' -eq 'true')
 
-      # --- Verify environment --------------------------------------------------
-      - name: Verify environment
-        run: pwsh -File scripts/verify-env.ps1 || true
+          Write-Host "🔧 Running Convert-PMDocuDRToPDF.ps1..."
+          Write-Host "🔹 Mode: $mode"
+          Write-Host "🔹 Fail on Warning: $failOnWarning"
 
-      # --- Build PDFs ----------------------------------------------------------
-      - name: Build PDFs
+          if ($mode -eq 'strict') { $VerbosePreference = 'Continue' }
+
+          pwsh -File "scripts/Convert-PMDocuDRToPDF.ps1"
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "❌ Document conversion failed."
+              exit 1
+          }
+      - name: 🔍 Validate Build Evidence
+        shell: pwsh
         run: |
-          pwsh -File scripts/build-doc.ps1 -SourceMd docs/examples/ChangeRequest.md
-          pwsh -File scripts/build-doc.ps1 -SourceMd docs/examples/ImplementationPlan.md
+          Write-Information "[ci-docs] Verifying JSON build evidence..."
+          $files = Get-ChildItem 'docs/_evidence' -Filter 'BuildResult-*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $files) { Write-Error "[ci-docs] ❌ No build evidence found."; exit 1 }
 
-      # --- Sign and Verify PDFs ------------------------------------------------
-      - name: Sign and Verify PDFs
+          try {
+              $null = Get-Content $files.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+              Write-Information "[ci-docs] ✅ $($files.Name) is valid JSON."
+          } catch {
+              Write-Error "[ci-docs] ❌ Invalid or unreadable build evidence file."
+              exit 1
+          }
+
+
+          Write-Host "✅ Base document set built successfully."
+
+      - name: 🧾 Build CI Compliance Matrix
+        if: steps.changes.outputs.changed == 'true'
+        shell: pwsh
         run: |
-          pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ChangeRequest.pdf
-          pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ChangeRequest.pdf -Verify
-          pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ImplementationPlan.pdf
-          pwsh -File scripts/sign-gpg.ps1 -TargetFile docs/releases/ImplementationPlan.pdf -Verify
+          pwsh -File "scripts/Convert-PMDocuDRToPDF.ps1" `
+            -InputFile "docs/gov/CI-Compliance-Matrix.md" `
+            -OutDir "docs/releases"
 
-      # --- Upload signed artifacts --------------------------------------------
-      - name: Upload signed artifacts
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "❌ CI Compliance Matrix build failed."
+              exit 1
+          }
+          Write-Host "✅ CI Compliance Matrix built successfully."
+
+      - name: 📜 Upload generated PDFs
+        if: steps.changes.outputs.changed == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: pm-docs-signed
-          path: docs/releases/
+          name: docs-pdf
+          path: docs/releases/*.pdf
+          retention-days: 30
