@@ -1,12 +1,64 @@
-formatter:
-  name: custom-clean
-  enabled: true
-pdf:
-  engine: xelatex
-  paper: letter
-  margin: 1in
-sign:
-  enabled: true
-  method: gpg
-  keyid: 405BDF22E0254CAF8CFB242DB4A165D836724E3C
+# ============================================================
+# 🧾 PMDocu-DR — Pandoc PDF Build Configuration
+# ============================================================
+# Ensures consistent, audit-grade PDF output with visible headers,
+# readable tables, and verified document metadata.
 
+pdf-engine: xelatex
+standalone: true
+
+variables:
+  # --- Layout & Typography ---
+  geometry: margin=1in
+  mainfont: "Segoe UI"
+  monofont: "Consolas"
+  fontsize: 11pt
+  linestretch: 1.2
+
+  # --- Color & Contrast ---
+  colorlinks: true
+  linkcolor: blue
+  urlcolor: blue
+  citecolor: black
+
+  # --- Metadata ---
+  documentclass: article
+  titlepage: false
+  toc: true
+  toc-depth: 3
+  author: "EMCSLLC / PMDocu-DR Project Lead"
+  date: "\\today"
+
+# --- Include shared markdown metadata ---
+metadata-files:
+  - docs/templates/header.md
+  - docs/templates/footer.md
+
+# --- Inject templates directly into PDF ---
+include-in-header: docs/templates/header.md
+include-after-body: docs/templates/footer.md
+
+# --- PDF Engine Options ---
+pdf-engine-opts:
+  - "-interaction=nonstopmode"
+
+# --- Header Includes (Styling & Table Enhancements) ---
+header-includes:
+  # Core color and table support
+  - \usepackage[table]{xcolor}
+  - \definecolor{headercolor}{RGB}{0,0,0}
+  - \definecolor{tableheadergray}{RGB}{235,235,235} % light gray header background
+  - \color{headercolor}
+  - \usepackage{etoolbox}
+  - \usepackage{longtable}
+
+  # Automatically apply gray background to table header rows
+  - \makeatletter
+  - \pretocmd{\LT@array}{\rowcolor{tableheadergray}}{}{}
+  - \makeatother
+
+  # Optional: alternating row striping for readability
+  - \rowcolors{2}{white}{gray!7}
+
+# --- Safety ---
+# Forces dark text output and removes dependency on viewer theme

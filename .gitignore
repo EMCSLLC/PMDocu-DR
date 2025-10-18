@@ -19,3 +19,9 @@ Thumbs.db
 
 # OS junk
 desktop.ini
+
+# PMDocu-DR Generated Evidence
+logs/evidence_report_*.json
+_reviewpacks/
+docs/pm/catalog.json
+
