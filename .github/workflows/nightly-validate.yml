@@ -1,0 +1,44 @@
+name: 🕒 Nightly Validation
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Every night at 2 AM UTC
+  workflow_dispatch:      # Allow manual run from GitHub UI
+
+jobs:
+  nightly-validate:
+    runs-on: windows-latest
+    name: Validate Repository Structure & Evidence
+    steps:
+      - name: 🧩 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🧰 Setup PowerShell
+        uses: actions/setup-powershell@v2
+
+      - name: 🧭 Run Structure & Tree Validation
+        shell: pwsh
+        run: |
+          Write-Host "=== Nightly Validation Started ==="
+          $Result = pwsh -NoProfile -File "scripts/Fix-RepoStructure.ps1" -AutoTree -Verbose
+          Write-Host $Result
+          if ($LASTEXITCODE -ne 0) { throw "Structure validation failed." }
+
+      - name: 📦 Collect Evidence Artifacts
+        if: always()
+        run: |
+          $EvidencePath = "docs/_evidence"
+          if (Test-Path $EvidencePath) {
+            Compress-Archive -Path "$EvidencePath\*" -DestinationPath "nightly-evidence.zip" -Force
+            Write-Host "Evidence logs packaged for upload."
+          } else {
+            Write-Host "No evidence directory found. Skipping."
+          }
+
+      - name: ⬆️ Upload Nightly Evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-validation-logs
+          path: nightly-evidence.zip
+          retention-days: 30
