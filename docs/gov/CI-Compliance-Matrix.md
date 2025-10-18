@@ -50,6 +50,18 @@ Each workflow can be run manually via `workflow_dispatch` for audit reviews.
 
 ---
 
+### 🔄 Continuous Evidence Validation (Control ID: CI-AUT-002)
+
+Beginning October 2025, PMDocu-DR incorporates an automated nightly workflow (**🕒 Nightly Validation**) to verify repository structure and evidence integrity.
+This control ensures that required compliance directories remain intact, evidence logs are generated and verified (`RepoTree*.txt`, `RepoStructureFix*.log`), and
+compressed artifacts are uploaded automatically to GitHub Actions for 30-day retention.
+
+This mechanism operates independently of build, lint, and signing pipelines, providing continuous assurance that documentation artifacts remain complete,
+traceable, and compliant with PMDocu-DR’s baseline configuration standards.
+
+
+---
+
 **Revision:** `v1.3 – 2025-10-18`
 **Maintainer:** EMCSLLC / PMDocu-DR Project Lead
 **Next Review:** `2026-04` (Semi-Annual Compliance Audit)
