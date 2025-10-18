@@ -15,6 +15,8 @@ jobs:
 
       - name: 🧰 Setup PowerShell
         uses: actions/setup-powershell@v2
+        with:
+          pwsh-version: '7.4.x'
 
       - name: 🧭 Run Structure & Tree Validation
         shell: pwsh
@@ -24,13 +26,38 @@ jobs:
           Write-Host $Result
           if ($LASTEXITCODE -ne 0) { throw "Structure validation failed." }
 
+      - name: 🧪 Verify Evidence Contents
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host "=== Verifying Evidence Directory ==="
+          $EvidencePath = "docs/_evidence"
+          if (-not (Test-Path $EvidencePath)) {
+            throw "Evidence directory not found at $EvidencePath"
+          }
+
+          $TreeFiles = Get-ChildItem -Path $EvidencePath -Filter 'RepoTree*.txt' -ErrorAction SilentlyContinue
+          $FixLogs   = Get-ChildItem -Path $EvidencePath -Filter 'RepoStructureFix*.log' -ErrorAction SilentlyContinue
+
+          if ($TreeFiles.Count -eq 0 -or $FixLogs.Count -eq 0) {
+            Write-Host "❌ Missing expected evidence files:"
+            if ($TreeFiles.Count -eq 0) { Write-Host "   - RepoTree*.txt not found" }
+            if ($FixLogs.Count -eq 0)   { Write-Host "   - RepoStructureFix*.log not found" }
+            throw "Evidence verification failed — expected files missing."
+          }
+
+          Write-Host "✅ Evidence verification passed — required files present."
+
       - name: 📦 Collect Evidence Artifacts
         if: always()
+        shell: pwsh
         run: |
+          $Timestamp = (Get-Date -Format 'yyyyMMdd-HHmmss')
           $EvidencePath = "docs/_evidence"
+          $ZipName = "nightly-evidence-$Timestamp.zip"
           if (Test-Path $EvidencePath) {
-            Compress-Archive -Path "$EvidencePath\*" -DestinationPath "nightly-evidence.zip" -Force
-            Write-Host "Evidence logs packaged for upload."
+            Compress-Archive -Path "$EvidencePath\*" -DestinationPath $ZipName -Force
+            Write-Host "Evidence logs packaged: $ZipName"
           } else {
             Write-Host "No evidence directory found. Skipping."
           }
@@ -40,5 +67,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nightly-validation-logs
-          path: nightly-evidence.zip
+          path: nightly-evidence-*.zip
           retention-days: 30
