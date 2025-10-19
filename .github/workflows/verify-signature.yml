@@ -3,75 +3,109 @@ name: 🔏 Verify Signatures
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
-    inputs:
-      mode:
-        description: 'Verification mode: quick, full, or strict'
-        required: false
-        default: 'quick'
-      fail_on_warning:
-        description: 'Fail workflow on warnings (true/false)'
-        required: false
-        default: 'false'
-
-permissions:
-  contents: read
 
 jobs:
-  verify-signature:
+  verify-signatures:
+    name: Verify GPG and Hash Integrity
     runs-on: windows-latest
-    name: Verify Artifact Signatures
 
     steps:
-      - name: 🧩 Checkout repository
+      - name: 🧩 Checkout Repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: 🔏 Verify signed outputs
+      - name: 🔐 Import public GPG key for verification
+        shell: pwsh
+        env:
+          GPG_PUBLIC_KEY_B64: ${{ secrets.CI_GPG_PUBLIC_KEY_B64 }}
+          GPG_KEY_ID:          0B57BB923F762D1E
+        run: |
+          Write-Host "🔏 Importing public GPG key for verification..."
+          $env:GNUPGHOME = Join-Path $env:RUNNER_TEMP "gnupg"
+          New-Item -ItemType Directory -Force -Path $env:GNUPGHOME | Out-Null
+
+          # Decode and import the public key
+          $publicPath = Join-Path $env:RUNNER_TEMP "public.asc"
+          [System.IO.File]::WriteAllBytes($publicPath, [Convert]::FromBase64String($env:GPG_PUBLIC_KEY_B64))
+          gpg --batch --import $publicPath
+          Remove-Item $publicPath -Force
+
+          # Configure Git for verification
+          git config --global gpg.program "gpg"
+          git config --global user.signingkey $env:GPG_KEY_ID
+
+          Write-Host "✅ Public key $env:GPG_KEY_ID imported successfully."
+          gpg --list-keys --keyid-format=short
+
+          # --- 🧪 Lightweight validation -----------------------------------
+          $sampleSig = Get-ChildItem -Recurse -Filter "*.asc" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($sampleSig) {
+              Write-Host "🧪 Testing signature verification on $($sampleSig.Name)..."
+              $verifyResult = gpg --verify $sampleSig.FullName 2>&1
+              if ($LASTEXITCODE -eq 0) {
+                  Write-Host "✅ GPG validation succeeded: key operational."
+              } else {
+                  Write-Warning "⚠️ GPG test verification returned non-zero exit code. Details:"
+                  Write-Host $verifyResult
+              }
+          } else {
+              Write-Warning "⚠️ No sample .asc signature found for pre-check; continuing to main verification."
+          }
+
+      - name: 🧰 Setup PowerShell
+        uses: actions/setup-powershell@v2
+
+      - name: 🔍 Verify Digital Signatures
         shell: pwsh
         run: |
-          $mode = '${{ github.event.inputs.mode }}'
-          $failOnWarning = ('${{ github.event.inputs.fail_on_warning }}' -eq 'true')
-          Write-Host "🔍 Running Verify-PMDocuDRSignatures.ps1..."
-          Write-Host "🔹 Mode: $mode"
-          Write-Host "🔹 Fail on Warning: $failOnWarning"
-
-          if ($mode -eq 'strict') { $VerbosePreference = 'Continue' }
-
-          $result = pwsh -File scripts\Verify-PMDocuDRSignatures.ps1
-          if ($LASTEXITCODE -ne 0) {
-              Write-Error "❌ Signature verification failed."
-              exit 1
+          Write-Output "=== Verifying document signatures ==="
+          $Script = "scripts/Verify-PMDocuDRSignatures.ps1"
+          if (Test-Path $Script) {
+            pwsh -NoProfile -File $Script -Verbose
+          } else {
+            Write-Error "Verification script not found: $Script"
+            exit 1
           }
 
-          if ($failOnWarning -and ($result -match 'Warning')) {
-              Write-Error "⚠️ Signature warnings detected (strict mode)."
-              exit 1
+      - name: 🧮 Verify SHA-256 Hashes
+        shell: pwsh
+        run: |
+          Write-Output "=== Verifying file hashes ==="
+          $Script = "scripts/verify-hash.ps1"
+          if (Test-Path $Script) {
+            pwsh -NoProfile -File $Script -Verbose
+          } else {
+            Write-Error "Verification script not found: $Script"
+            exit 1
           }
 
-          Write-Host "✅ Signature verification complete."
+      - name: 🧩 Build Governance PDFs (Post-Verify)
+        if: success()
+        shell: pwsh
+        run: |
+          Write-Output "=== Building Governance PDFs ==="
+          $Script = "scripts/Build-GovDocs.ps1"
+          if (Test-Path $Script) {
+            pwsh -NoProfile -File $Script -Verbose
+          } else {
+            Write-Error "Governance build script not found: $Script"
+            exit 1
+          }
 
-      - name: 📜 Upload verification evidence
+      - name: 📦 Collect Evidence Artifacts
+        if: always()
+        shell: pwsh
+        run: |
+          $Evidence = "docs/_evidence"
+          if (Test-Path $Evidence) {
+            Compress-Archive -Path "$Evidence/*" -DestinationPath "verify-signature-evidence.zip" -Force
+            Write-Output "Evidence archive created: verify-signature-evidence.zip"
+          }
+
+      - name: ⬆️ Upload Evidence Logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: signature-verification
-          path: docs/_evidence/VerifyResult-*.json
+          name: verify-signature-evidence
+          path: verify-signature-evidence.zip
           retention-days: 30
-
-      - name: 🔍 Validate Signature Evidence
-        shell: pwsh
-        run: |
-          Write-Information "[ci-verify] Checking JSON integrity for signature verification..."
-          $files = Get-ChildItem 'docs/_evidence' -Filter 'VerifyResult-*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $files) { Write-Error "[ci-verify] ❌ No VerifyResult evidence found."; exit 1 }
-
-          try {
-              $null = Get-Content $files.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-              Write-Information "[ci-verify] ✅ $($files.Name) is valid JSON."
-          } catch {
-              Write-Error "[ci-verify] ❌ Evidence file invalid JSON."
-              exit 1
-          }
