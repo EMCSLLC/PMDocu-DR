@@ -69,3 +69,11 @@ jobs:
           name: nightly-validation-logs
           path: nightly-evidence-*.zip
           retention-days: 30
+
+      - name: 🧾 Generate Baseline Snapshot
+        if: success()
+        shell: pwsh
+        run: |
+          Write-Host "=== Generating Baseline Snapshot ==="
+          pwsh -NoProfile -File "scripts/Write-BaselineSnapshot.ps1"
+          Write-Host "✅ Baseline snapshot successfully written to docs/releases/"
