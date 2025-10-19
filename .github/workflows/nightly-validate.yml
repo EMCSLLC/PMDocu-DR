@@ -77,3 +77,11 @@ jobs:
           Write-Host "=== Generating Baseline Snapshot ==="
           pwsh -NoProfile -File "scripts/Write-BaselineSnapshot.ps1"
           Write-Host "✅ Baseline snapshot successfully written to docs/releases/"
+
+      - name: 🧮 Append CI-AUT-002-A Compliance Summary
+        if: success()
+        shell: pwsh
+        run: |
+          Write-Host "=== Updating Release Compliance Record ==="
+          pwsh -NoProfile -File "scripts/Update-ReleaseCompliance.ps1"
+          Write-Host "✅ Release compliance summary appended successfully."
