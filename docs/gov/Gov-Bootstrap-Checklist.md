@@ -105,6 +105,35 @@ The workflow performs the following automated controls:
 **Compliance Outcome:**
 Provides continuous verification of documentation integrity, ensuring traceable audit artifacts are generated nightly without modifying the repository contents.
 
+---
+
+#### 🧾 Baseline Snapshot Recordkeeping (Sub-Control CI-AUT-002-A)
+
+**Purpose:**
+To maintain a timestamped, immutable record of PMDocu-DR’s CI compliance status.
+Each successful nightly validation generates a Markdown snapshot (`Baseline-YYYYMMDD.md`)
+capturing control results, commit hash, and evidence references from the `_evidence` directory.
+
+**Implementation:**
+- Script: `scripts/Write-BaselineSnapshot.ps1`
+- Workflow: `.github/workflows/nightly-validate.yml`
+- Output Path: `docs/releases/`
+- Snapshot Contents:
+  - Date, branch, and commit hash
+  - Validation summary for `CI-AUT-001` (Build & Sign Docs) and `CI-AUT-002` (Nightly Validation)
+  - Latest evidence file references (`RepoTree*.txt`, `RepoStructureFix*.log`, `SignResult*.json`)
+  - Compliance outcome statement
+
+**Verification:**
+Each baseline file is created automatically by the final step of the nightly workflow
+when validation passes. The resulting Markdown file serves as an immutable
+point-in-time proof of continuous compliance and CI integrity.
+
+**Audit Outcome:**
+Confirms automated recordkeeping of CI state for each validation cycle,
+supporting audit traceability and providing long-term assurance that
+repository structure, documentation, and signing workflows remain functional and compliant.
+
 
 ## 🧾 Notes
 
