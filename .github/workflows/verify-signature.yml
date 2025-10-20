@@ -22,10 +22,13 @@ jobs:
         run: |
           Write-Host "🔏 Importing public GPG key for verification..."
 
-          # Normalize GNUPGHOME to a valid Windows runner path
+          # Normalize GNUPGHOME path
           $gnupg = Join-Path -Path (Convert-Path $env:RUNNER_TEMP) -ChildPath "gnupg"
           New-Item -ItemType Directory -Force -Path $gnupg | Out-Null
-          $env:GNUPGHOME = $gnupg
+
+          # Convert to POSIX path for GPG compatibility
+          $posixPath = ($gnupg -replace '\\','/') -replace '^([A-Z]):','/$($matches[1].ToLower())'
+          $env:GNUPGHOME = $posixPath
           Write-Host "Using GNUPGHOME = $env:GNUPGHOME"
 
           # Decode and import the public key
