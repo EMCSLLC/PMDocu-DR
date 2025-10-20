@@ -38,8 +38,9 @@ $Repo = $env:GITHUB_REPOSITORY
 if (-not $Repo) {
     try {
         $Repo = git config --get remote.origin.url |
-        ForEach-Object { ($_ -replace '.*[:/](.+?)(?:\.git)?$', '$1') }
-    } catch {
+            ForEach-Object { ($_ -replace '.*[:/](.+?)(?:\.git)?$', '$1') }
+    }
+    catch {
         $Repo = 'EMCSLLC/PMDocu-DR'
     }
 }
@@ -83,7 +84,8 @@ if ($env:GITHUB_ACTIONS -eq 'true') {
         git push origin HEAD
         $EvidenceData.auto_commit = $true
         Write-Information "[build-readme] ✅ Changes committed to branch."
-    } else {
+    }
+    else {
         Write-Information "[build-readme] No changes detected; nothing to commit."
     }
 
@@ -92,3 +94,4 @@ if ($env:GITHUB_ACTIONS -eq 'true') {
 }
 
 Write-Information "[build-readme] ✅ Completed successfully."
+

@@ -1,100 +1,59 @@
 <#
 .SYNOPSIS
-  Runs the configured Markdown formatter for PMDocu-DR.
+  Converts Markdown headings to ATX style (#) and normalizes spacing.
 
 .DESCRIPTION
-  Detects and invokes the selected Markdown formatter (custom or default)
-  to normalize Markdown files across the repository.
-
-  Produces both human-readable log output (via Write-Information)
-  and structured result objects (via Write-Output).
-
-.PARAMETER Source
-  Root directory or file to format. Defaults to "docs".
-
-.PARAMETER Exclude
-  Wildcard patterns for files/folders to skip.
-
-.PARAMETER OnlyInclude
-  Wildcard patterns for files/folders to include.
-
-.PARAMETER FormatterName
-  Formatter script name (without extension). Defaults to "format-markdown".
-
-.EXAMPLE
-  pwsh scripts/run-formatter.ps1 -Source docs
-
-.EXAMPLE
-  pwsh scripts/run-formatter.ps1 -Source docs -Exclude "templates/*"
-
-.EXAMPLE
-  pwsh scripts/run-formatter.ps1 -Source docs -OnlyInclude "examples/*" -Exclude "*Plan.md"
+  - Converts Setext (=== / ---) headings to ATX (# / ##)
+  - Normalizes all ATX headings to a single space after hashes (e.g., "##Title" → "## Title")
+  - Preserves existing non-heading text
+  - Safe to re-run multiple times (idempotent)
 #>
-# ---------------------------------------------------------
-# 🧭 WORKFLOW (WF)
-# ---------------------------------------------------------
-# Local:
-#   pwsh scripts/run-formatter.ps1 -Source docs
-#
-# CI (GitHub Actions):
-#   - name: Run Markdown Formatter
-#     run: pwsh scripts/run-formatter.ps1 -Source docs -Exclude "templates/*" `
-#          -InformationAction Continue | Tee-Object -FilePath "formatter.log"
-#
-# ---------------------------------------------------------
 
 [CmdletBinding()]
 param(
-    [string]$Source = "docs",
-    [string[]]$Exclude,
-    [string[]]$OnlyInclude,
-    [string]$FormatterName = "format-markdown"
+    [string]$Path = "docs",
+    [switch]$WhatIf
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# --- Locate formatter ---------------------------------------------------------
-$formatterPath = Join-Path -Path (Join-Path $PSScriptRoot "..\formatters") -ChildPath "$FormatterName.ps1"
-if (-not (Test-Path $formatterPath)) {
-    throw "Formatter not found: $formatterPath"
-}
-
-Write-Information "🧹 Running formatter '$FormatterName' on '$Source'"
-
-# --- Execute formatter --------------------------------------------------------
-$invokeParams = @{
-    Path = $Source
-}
-if ($Exclude) { $invokeParams.Exclude = $Exclude }
-if ($OnlyInclude) { $invokeParams.OnlyInclude = $OnlyInclude }
-
-$results = & $formatterPath @invokeParams -InformationAction Continue
-
-if (-not $results) {
-    Write-Warning "No files were processed."
+$files = Get-ChildItem -Path $Path -Recurse -Include *.md -File
+if (-not $files) {
+    Write-Warning "No Markdown files found under '$Path'."
     return
 }
 
-Write-Information "✅ Formatter completed successfully."
-Write-Information "📊 Processed $($results.Count) file(s)."
+foreach ($file in $files) {
+    $content = Get-Content -Raw -Path $file
 
-# --- Emit structured summary --------------------------------------------------
-$summary = [PSCustomObject]@{
-    Formatter  = $FormatterName
-    SourcePath = (Resolve-Path $Source).Path
-    Processed  = $results.Count
-    Timestamp  = (Get-Date -Format 's')
-    Results    = $results
+    # --- 1️⃣ Convert Setext headings (==== and ----) to ATX (#, ##) ---
+    # H1 (=== underline)
+    $content = $content -replace "(?ms)^(?<title>[^\r\n]+)\r?\n=+\s*$", '# ${title}'
+    # H2 (--- underline)
+    $content = $content -replace "(?ms)^(?<title>[^\r\n]+)\r?\n-+\s*$", '## ${title}'
+
+    # --- 2️⃣ Normalize spacing in all ATX headings ---
+    # Ensure one space between hashes and text (##Title → ## Title)
+    $content = $content -replace '^(#{1,6})(\s*)([^\s#])', '$1 $3' -replace '^(#{1,6})\s{2,}', '$1 '
+
+    # --- 3️⃣ Cleanup any excessive blank lines before/after headings ---
+    $content = $content -replace '(\r?\n){3,}', "`r`n`r`n"
+
+    if ($WhatIf) {
+        Write-Host "Would fix headings in $file"
+    }
+    else {
+        Set-Content -Path $file -Value $content -Encoding UTF8
+        Write-Host "✅ Fixed headings in $file"
+    }
 }
-
-$summary | Write-Output
 
 # SIG # Begin signature block
 # MIIcAgYJKoZIhvcNAQcCoIIb8zCCG+8CAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCAJGzWllGGn7LPa
-# OXKTcKFFQsfVMIXA0gwu6UGbv5g9gaCCFkowggMMMIIB9KADAgECAhBfLlcTvzVL
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCAeJmICl/0Qic+k
+# gKexiloQClARFlB5EwxQ8Zn1ptvd9qCCFkowggMMMIIB9KADAgECAhBfLlcTvzVL
 # tEQJ24CGEVGNMA0GCSqGSIb3DQEBCwUAMB4xHDAaBgNVBAMME1BNRG9jdS1EUiBM
 # b2NhbCBEZXYwHhcNMjUxMDE3MTkyNDA0WhcNMjYxMDE3MTk0NDA0WjAeMRwwGgYD
 # VQQDDBNQTURvY3UtRFIgTG9jYWwgRGV2MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A
@@ -217,29 +176,29 @@ $summary | Write-Output
 # RG9jdS1EUiBMb2NhbCBEZXYCEF8uVxO/NUu0RAnbgIYRUY0wDQYJYIZIAWUDBAIB
 # BQCggYQwGAYKKwYBBAGCNwIBDDEKMAigAoAAoQKAADAZBgkqhkiG9w0BCQMxDAYK
 # KwYBBAGCNwIBBDAcBgorBgEEAYI3AgELMQ4wDAYKKwYBBAGCNwIBFTAvBgkqhkiG
-# 9w0BCQQxIgQgJQT5BYQr+Oj/1uYEisXM54QaAwgsf+pFCd/3PDHumogwDQYJKoZI
-# hvcNAQEBBQAEggEAfGUcrR2qgW3o83BCc50BRe88qyY66rLWmn130woDfpjCCfp3
-# NVXkSH4GO7td8lBiw6dZgzpHgL6WeMh4n/7YdPtO1m0o7gxK2P93eL307Fvl7716
-# WKEtrukMoakI3PW6xsKZB+UADorSMyC8mJ02B2d/ul99YOX3zS/3Gz6vffCEBlTh
-# oaXUKOsPmYfxA4+b3Zc0cspeQfaR8lE6xbUlwE3G//F1Eq/UhKNdQeOVjMGm+sTp
-# 5yji+qc+kfy4JTCRGeaZR8nW2fe1VxXBsTdrUfnvdqo6mHy5SUAoxVg7p1exbvIC
-# a1AhWt7XIWHfCamCZjy13woNMEdOD5OnjW1JyaGCAyYwggMiBgkqhkiG9w0BCQYx
+# 9w0BCQQxIgQgCbmY4zZwMZz5E/ZgUcldknSE2zsHe62PyL0yeFPALbwwDQYJKoZI
+# hvcNAQEBBQAEggEAX9Z5QBCtzhc9HE1pqeZ2taK1WuGByul7SMplakYo/ppWLHY5
+# OQUU+6huhCPDFFGkBex8svgL7dhiDvRV0DB98vPB0Yt5giqrej0GKVRhxNU7ddhF
+# bpDYOp7PVHNpMs3FJCE6QTLY6mpSHvBHyjPx7fwD0ht8xVLInf3IahLAWLq81Jgv
+# 2eA0w/En5ABtL7YejpL/OryCXcJIQnE4j0eXQvGY6wtZvYZaNk8AswFhwoodTCPt
+# OQyQOX0JAI24CYa9r3ERAE9wnWSPGfiO2R7eILsOgIxdaZUIoXZxCO9wfkjQ3bUn
+# qaewT4/m3VLz2p0h3JhKkqe5Fx//PaB35Ak6nKGCAyYwggMiBgkqhkiG9w0BCQYx
 # ggMTMIIDDwIBATB9MGkxCzAJBgNVBAYTAlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwg
 # SW5jLjFBMD8GA1UEAxM4RGlnaUNlcnQgVHJ1c3RlZCBHNCBUaW1lU3RhbXBpbmcg
 # UlNBNDA5NiBTSEEyNTYgMjAyNSBDQTECEAqA7xhLjfEFgtHEdqeVdGgwDQYJYIZI
 # AWUDBAIBBQCgaTAYBgkqhkiG9w0BCQMxCwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJ
-# BTEPFw0yNTEwMTcxOTM0MTBaMC8GCSqGSIb3DQEJBDEiBCAlktHXkwdlyU9AtVrD
-# voWFWU+1jELIh/fgiv1rDZIjxzANBgkqhkiG9w0BAQEFAASCAgCcbVbbFXJlecVc
-# rHkDjvyOsj9iSxuPBMEL21A40lIj/tW5qy/AcPfIt6qC6IoDz3lLzm4MrJdQvkmc
-# PfX01fQ5yD85WElzpazyNqNaDzepl7JU2BTS6F33RhSp1TkUyhg2SqOoFfn88to8
-# RR6CFh7OgvGDb8a0h486xNZyEbczhhEriA1ntpvfAFVooYagDkBMbdkXwCg3ps33
-# 2tqCyXq/pdin+p+G238fPl2YwKDH5AOrjkZ7wx1c4rDkBL//AEITacs/XEXrGu9r
-# pvNtXyEBzneql1AzL+WzaIXXSiarRLjaOWC3k8GtuRH4aEatMAHPJXfwgNJvxP9S
-# BdSfK6Od9vpcK6jYKAAeRlOGfUY4jPbfahh73LDVTd7UQeCyYQ27TJ67xbGFV9s+
-# lXgfmECNINcUgR6pjcm3lDU3AcLroLU0wCEjIMC8vo/+NjAEHuRJpdbCGlbTdv9z
-# T3zhOF8sOX0COkGdFDNs9bvcFFRpZjyifMw67I7LYYV5vJPp6AygE60lpGKgtW68
-# A1NmlwSGAJwfqiG3p94d5g98fhqfoURypeLjpLVwenBHwhb9xasXeQLregpcNHq4
-# KE4PEF46NUtBS/N/L5fHh4SKp+zGT49Ai1fAyafgGPDlQ29vlyOuO0xVL2Yb0gWN
-# 40bs0SlKz4sgWVPeYLWQ8oKDr5Bmrg==
+# BTEPFw0yNTEwMTcxOTM0MDlaMC8GCSqGSIb3DQEJBDEiBCCE7282B+6Q9bd+gfxi
+# f6klsgFeTuFatkoYI76CYyCIMTANBgkqhkiG9w0BAQEFAASCAgBgXZ2atQJ2q3CV
+# rKlp1bKb1QpkMGcbxjukdLTVgCqTuBqgJY/nj4Yy/rYiNo296nEusN+TEe2PWvQT
+# C5jEA7g1+s5qBKl3pR2AjjU5CFJCT3gZhk9GC7gJ4TZF4iqxT5iQGy/mny2zH2GT
+# SiY7O8ptu4mxH+FTZuKEJxHRydzp2VY4PZTNvtHtnnemoQdOWEI8aZUKktbI0e8h
+# t2MxHSYaCxa3ciwXGkILcKgX8XDDFiJEBhjEHHpNu9trmwJqMp2qmp9gMOjOeHHZ
+# zy8n3OQEfWdijIK3dHOJCCP30Lfpyu0CUfpCuP/OeKNVTI+hnZZQVcItuEghLE09
+# UZ9Zco3gfFMFE5Y2Ledc6WV0VxzigG25RKnukz+s33R0idJHzdOjzdB/4h1M57wy
+# Gc9+laUMAUPgKhcvCXWvhPwlzp+hDaBdmp6YoQuKzWU5wFkJ9hJ2xToEZw2FrghJ
+# phmPjEtjWdDRY65ixhNNKHZ29XGRmGRmbonBnfMAI7qoaDisOhWUcySlvH+Ta3a+
+# /vjZXKK/godqAYhw6u8ImFvFmNehr+Uu1uAWo1O32CgsgCm9NGONYI71uqZm3+uK
+# kiqg2zDBq1EY7Q4cn0uqmwF4dWFNQqhNmtkVTTf73Fsfyz8AQmqkaNwxBx8vvVJT
+# OGNnRe5QDgOOg3xpqs5jM7Rk8XEuRw==
 # SIG # End signature block
 

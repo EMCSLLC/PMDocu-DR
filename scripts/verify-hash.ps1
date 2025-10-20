@@ -28,61 +28,64 @@
 
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory)]
-  [string]$InputFile,
+    [Parameter(Mandatory)]
+    [string]$InputFile,
 
-  [string]$OutDir,
-  [switch]$Quiet
+    [string]$OutDir,
+    [switch]$Quiet
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 try {
-  $InputFile = (Resolve-Path $InputFile).Path
-  if (-not (Test-Path $InputFile)) {
-    throw "Input file not found: $InputFile"
-  }
-
-  if (-not $OutDir) {
-    $OutDir = Split-Path $InputFile -Parent
-  }
-  if (-not (Test-Path $OutDir)) {
-    New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
-  }
-
-  $HashFile = Join-Path $OutDir ("{0}.sha256" -f [IO.Path]::GetFileName($InputFile))
-
-  # Compute new hash
-  $sha256 = Get-FileHash -Algorithm SHA256 -Path $InputFile
-  $computedHash = $sha256.Hash.ToLowerInvariant()
-
-  if (-not (Test-Path $HashFile)) {
-    # Create new .sha256 file
-    "$computedHash *$($sha256.Path | Split-Path -Leaf)" | Out-File -FilePath $HashFile -Encoding ascii -Force
-    if (-not $Quiet) { Write-Output ("HASH_CREATED={0}" -f $HashFile) }
-    Write-Output ("STATUS=SUCCESS | MESSAGE=Hash file created")
-    exit 0
-  }
-
-  # Read expected hash
-  $expectedLine = Get-Content -Path $HashFile -ErrorAction Stop | Select-Object -First 1
-  $expectedHash = ($expectedLine -split '\s+')[0].ToLowerInvariant()
-
-  if ($computedHash -eq $expectedHash) {
-    if (-not $Quiet) {
-      Write-Output ("HASH_VERIFIED={0}" -f $HashFile)
-      Write-Output ("FILE={0}" -f $InputFile)
+    $InputFile = (Resolve-Path $InputFile).Path
+    if (-not (Test-Path $InputFile)) {
+        throw "Input file not found: $InputFile"
     }
-    Write-Output "STATUS=SUCCESS"
-    exit 0
-  } else {
-    Write-Error ("STATUS=FAILURE | MESSAGE=Hash mismatch for {0}" -f $InputFile)
-    Write-Error ("EXPECTED={0}" -f $expectedHash)
-    Write-Error ("COMPUTED={0}" -f $computedHash)
-    exit 1
-  }
-} catch {
-  Write-Error ("STATUS=FAILURE | MESSAGE={0}" -f $_.Exception.Message)
-  exit 1
+
+    if (-not $OutDir) {
+        $OutDir = Split-Path $InputFile -Parent
+    }
+    if (-not (Test-Path $OutDir)) {
+        New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+    }
+
+    $HashFile = Join-Path $OutDir ("{0}.sha256" -f [IO.Path]::GetFileName($InputFile))
+
+    # Compute new hash
+    $sha256 = Get-FileHash -Algorithm SHA256 -Path $InputFile
+    $computedHash = $sha256.Hash.ToLowerInvariant()
+
+    if (-not (Test-Path $HashFile)) {
+        # Create new .sha256 file
+        "$computedHash *$($sha256.Path | Split-Path -Leaf)" | Out-File -FilePath $HashFile -Encoding ascii -Force
+        if (-not $Quiet) { Write-Output ("HASH_CREATED={0}" -f $HashFile) }
+        Write-Output ("STATUS=SUCCESS | MESSAGE=Hash file created")
+        exit 0
+    }
+
+    # Read expected hash
+    $expectedLine = Get-Content -Path $HashFile -ErrorAction Stop | Select-Object -First 1
+    $expectedHash = ($expectedLine -split '\s+')[0].ToLowerInvariant()
+
+    if ($computedHash -eq $expectedHash) {
+        if (-not $Quiet) {
+            Write-Output ("HASH_VERIFIED={0}" -f $HashFile)
+            Write-Output ("FILE={0}" -f $InputFile)
+        }
+        Write-Output "STATUS=SUCCESS"
+        exit 0
+    }
+    else {
+        Write-Error ("STATUS=FAILURE | MESSAGE=Hash mismatch for {0}" -f $InputFile)
+        Write-Error ("EXPECTED={0}" -f $expectedHash)
+        Write-Error ("COMPUTED={0}" -f $computedHash)
+        exit 1
+    }
 }
+catch {
+    Write-Error ("STATUS=FAILURE | MESSAGE={0}" -f $_.Exception.Message)
+    exit 1
+}
+

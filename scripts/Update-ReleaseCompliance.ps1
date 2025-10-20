@@ -26,7 +26,7 @@ if (-not (Test-Path $ReleasesDir)) {
 
 # --- Locate latest baseline snapshot ---
 $Baseline = Get-ChildItem $ReleasesDir -Filter 'Baseline-*.md' |
-Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
 if (-not $Baseline) {
     throw "No Baseline-*.md file found; run Write-BaselineSnapshot.ps1 first."
@@ -47,8 +47,10 @@ $Line = "**CI-AUT-002-A:** Nightly Validation and Baseline Snapshot recordkeepin
 if (Test-Path $ReleaseFile) {
     Add-Content -Path $ReleaseFile -Value "`r`n$Line"
     Write-Host "✅ Appended CI-AUT-002-A compliance summary to existing file: $($ReleaseFile)"
-} else {
+}
+else {
     $Header = "# 🧩 Change Record – $DateStamp`r`n`r`n## Compliance Verification`r`n`r`n"
     ($Header + $Line) | Out-File -FilePath $ReleaseFile -Encoding utf8 -Force
     Write-Host "✅ Created new release compliance record: $($ReleaseFile)"
 }
+

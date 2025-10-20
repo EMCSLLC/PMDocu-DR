@@ -79,7 +79,9 @@ try {
     Write-Output ("SIGNATURE_CREATED={0}" -f $SigFile)
     Write-Output ("SIGNED_FILE={0}" -f $InputFile)
     Write-Output "STATUS=SUCCESS"
-} catch {
+}
+catch {
     Write-Error ("STATUS=FAILURE | MESSAGE={0}" -f $_.Exception.Message)
     exit 1
 }
+

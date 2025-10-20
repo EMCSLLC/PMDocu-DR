@@ -1,100 +1,50 @@
-<#
-.SYNOPSIS
-  Runs the configured Markdown formatter for PMDocu-DR.
-
-.DESCRIPTION
-  Detects and invokes the selected Markdown formatter (custom or default)
-  to normalize Markdown files across the repository.
-
-  Produces both human-readable log output (via Write-Information)
-  and structured result objects (via Write-Output).
-
-.PARAMETER Source
-  Root directory or file to format. Defaults to "docs".
-
-.PARAMETER Exclude
-  Wildcard patterns for files/folders to skip.
-
-.PARAMETER OnlyInclude
-  Wildcard patterns for files/folders to include.
-
-.PARAMETER FormatterName
-  Formatter script name (without extension). Defaults to "format-markdown".
-
-.EXAMPLE
-  pwsh scripts/run-formatter.ps1 -Source docs
-
-.EXAMPLE
-  pwsh scripts/run-formatter.ps1 -Source docs -Exclude "templates/*"
-
-.EXAMPLE
-  pwsh scripts/run-formatter.ps1 -Source docs -OnlyInclude "examples/*" -Exclude "*Plan.md"
-#>
-# ---------------------------------------------------------
-# 🧭 WORKFLOW (WF)
-# ---------------------------------------------------------
-# Local:
-#   pwsh scripts/run-formatter.ps1 -Source docs
-#
-# CI (GitHub Actions):
-#   - name: Run Markdown Formatter
-#     run: pwsh scripts/run-formatter.ps1 -Source docs -Exclude "templates/*" `
-#          -InformationAction Continue | Tee-Object -FilePath "formatter.log"
-#
-# ---------------------------------------------------------
-
 [CmdletBinding()]
 param(
-    [string]$Source = "docs",
-    [string[]]$Exclude,
-    [string[]]$OnlyInclude,
-    [string]$FormatterName = "format-markdown"
+    [Parameter()][string]$OutDir = "docs\_evidence"
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# --- Locate formatter ---------------------------------------------------------
-$formatterPath = Join-Path -Path (Join-Path $PSScriptRoot "..\formatters") -ChildPath "$FormatterName.ps1"
-if (-not (Test-Path $formatterPath)) {
-    throw "Formatter not found: $formatterPath"
+New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+
+$manifest = [pscustomobject]@{
+    repo      = (git rev-parse --show-toplevel 2> $null)
+    commit    = (git rev-parse HEAD 2> $null)
+    runner    = $env:RUNNER_NAME
+    created   = (Get-Date).ToString("o")
+    pandocVer = (& pandoc -v | Select-String -Pattern 'pandoc \d+(\.\d+)+' | ForEach-Object { $_.Matches.Value }) -join ', '
+    files     = (Get-ChildItem docs\releases -Filter *.pdf | ForEach-Object { $_.FullName })
 }
 
-Write-Information "🧹 Running formatter '$FormatterName' on '$Source'"
+$manifestPath = Join-Path $OutDir "manifest-$stamp.json"
+$manifest | ConvertTo-Json -Depth 5 | Out-File -Encoding utf8 $manifestPath
 
-# --- Execute formatter --------------------------------------------------------
-$invokeParams = @{
-    Path = $Source
-}
-if ($Exclude) { $invokeParams.Exclude = $Exclude }
-if ($OnlyInclude) { $invokeParams.OnlyInclude = $OnlyInclude }
+# Include the latest Test-PMDOCU evidence if it exists
+$latestTest = Get-ChildItem 'docs/_evidence' -Filter 'TestResult-*.json' |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+$include = @("docs\releases\*.pdf", "docs\releases\*.asc", "docs\releases\*.sha256")
+if ($latestTest) { $include += $latestTest.FullName }
 
-$results = & $formatterPath @invokeParams -InformationAction Continue
+Compress-Archive -Path $include -DestinationPath $zip -Force
 
-if (-not $results) {
-    Write-Warning "No files were processed."
-    return
-}
+$zip = Join-Path $OutDir "evidence-$stamp.zip"
+Compress-Archive -Path @("docs\releases\*.pdf", "docs\signed\*", "docs\hashes\*", $manifestPath) -DestinationPath $zip -Force
 
-Write-Information "✅ Formatter completed successfully."
-Write-Information "📊 Processed $($results.Count) file(s)."
+"[SUMMARY] evidence = $zip" | Out-Host
 
-# --- Emit structured summary --------------------------------------------------
-$summary = [PSCustomObject]@{
-    Formatter  = $FormatterName
-    SourcePath = (Resolve-Path $Source).Path
-    Processed  = $results.Count
-    Timestamp  = (Get-Date -Format 's')
-    Results    = $results
-}
-
-$summary | Write-Output
+$summary |
+    Select-Object RepoRoot, Commit, RanAt, Hostname, @{Name = 'Outputs'; Expression = { $releaseData.Count } }, @{Name = 'Results'; Expression = { $results.Count } } |
+    Format-Table -AutoSize
 
 # SIG # Begin signature block
 # MIIcAgYJKoZIhvcNAQcCoIIb8zCCG+8CAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCAJGzWllGGn7LPa
-# OXKTcKFFQsfVMIXA0gwu6UGbv5g9gaCCFkowggMMMIIB9KADAgECAhBfLlcTvzVL
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCBXGy8ZDE58b1JA
+# b5kf9NMcbYNKlmyj8EzGYEByYDMGpqCCFkowggMMMIIB9KADAgECAhBfLlcTvzVL
 # tEQJ24CGEVGNMA0GCSqGSIb3DQEBCwUAMB4xHDAaBgNVBAMME1BNRG9jdS1EUiBM
 # b2NhbCBEZXYwHhcNMjUxMDE3MTkyNDA0WhcNMjYxMDE3MTk0NDA0WjAeMRwwGgYD
 # VQQDDBNQTURvY3UtRFIgTG9jYWwgRGV2MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A
@@ -217,29 +167,29 @@ $summary | Write-Output
 # RG9jdS1EUiBMb2NhbCBEZXYCEF8uVxO/NUu0RAnbgIYRUY0wDQYJYIZIAWUDBAIB
 # BQCggYQwGAYKKwYBBAGCNwIBDDEKMAigAoAAoQKAADAZBgkqhkiG9w0BCQMxDAYK
 # KwYBBAGCNwIBBDAcBgorBgEEAYI3AgELMQ4wDAYKKwYBBAGCNwIBFTAvBgkqhkiG
-# 9w0BCQQxIgQgJQT5BYQr+Oj/1uYEisXM54QaAwgsf+pFCd/3PDHumogwDQYJKoZI
-# hvcNAQEBBQAEggEAfGUcrR2qgW3o83BCc50BRe88qyY66rLWmn130woDfpjCCfp3
-# NVXkSH4GO7td8lBiw6dZgzpHgL6WeMh4n/7YdPtO1m0o7gxK2P93eL307Fvl7716
-# WKEtrukMoakI3PW6xsKZB+UADorSMyC8mJ02B2d/ul99YOX3zS/3Gz6vffCEBlTh
-# oaXUKOsPmYfxA4+b3Zc0cspeQfaR8lE6xbUlwE3G//F1Eq/UhKNdQeOVjMGm+sTp
-# 5yji+qc+kfy4JTCRGeaZR8nW2fe1VxXBsTdrUfnvdqo6mHy5SUAoxVg7p1exbvIC
-# a1AhWt7XIWHfCamCZjy13woNMEdOD5OnjW1JyaGCAyYwggMiBgkqhkiG9w0BCQYx
+# 9w0BCQQxIgQgKHi6MppCLEIbi6FNHXL99oIK9jfaJ6cKbjOTPEV8I60wDQYJKoZI
+# hvcNAQEBBQAEggEA3WuTv/1QlPVdDN3/jiT7Sajn6bAtzhubdy89/AInSpGHEhbP
+# BDgrYtdwyXoLZurCOWJ94n4SE+suxaa63gjNIb/1Rq7hbkGkyfjM7w9Af+DsshPm
+# pdlKejJnqln6FB6H8MBLQXA7KDk0CeX+1u7MKMFGWrF57uXQRsnkSXjm3gM/PRT1
+# 1GN5NqGz8jqSxtwRrTbSMABnOtu3oMLvj71grq4R/X5S6Nx/4hPGcBV0ouN3myZC
+# tBGVfQ2Sri94u6whmPDd2x7qc9ZFwDWoyG8TGUndYKDqWb3L95fg6s3CFzzm9bKZ
+# V1/KVBx2W1OsnO5VbkH7Qe7YQ13Ubv6/DEPa5aGCAyYwggMiBgkqhkiG9w0BCQYx
 # ggMTMIIDDwIBATB9MGkxCzAJBgNVBAYTAlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwg
 # SW5jLjFBMD8GA1UEAxM4RGlnaUNlcnQgVHJ1c3RlZCBHNCBUaW1lU3RhbXBpbmcg
 # UlNBNDA5NiBTSEEyNTYgMjAyNSBDQTECEAqA7xhLjfEFgtHEdqeVdGgwDQYJYIZI
 # AWUDBAIBBQCgaTAYBgkqhkiG9w0BCQMxCwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJ
-# BTEPFw0yNTEwMTcxOTM0MTBaMC8GCSqGSIb3DQEJBDEiBCAlktHXkwdlyU9AtVrD
-# voWFWU+1jELIh/fgiv1rDZIjxzANBgkqhkiG9w0BAQEFAASCAgCcbVbbFXJlecVc
-# rHkDjvyOsj9iSxuPBMEL21A40lIj/tW5qy/AcPfIt6qC6IoDz3lLzm4MrJdQvkmc
-# PfX01fQ5yD85WElzpazyNqNaDzepl7JU2BTS6F33RhSp1TkUyhg2SqOoFfn88to8
-# RR6CFh7OgvGDb8a0h486xNZyEbczhhEriA1ntpvfAFVooYagDkBMbdkXwCg3ps33
-# 2tqCyXq/pdin+p+G238fPl2YwKDH5AOrjkZ7wx1c4rDkBL//AEITacs/XEXrGu9r
-# pvNtXyEBzneql1AzL+WzaIXXSiarRLjaOWC3k8GtuRH4aEatMAHPJXfwgNJvxP9S
-# BdSfK6Od9vpcK6jYKAAeRlOGfUY4jPbfahh73LDVTd7UQeCyYQ27TJ67xbGFV9s+
-# lXgfmECNINcUgR6pjcm3lDU3AcLroLU0wCEjIMC8vo/+NjAEHuRJpdbCGlbTdv9z
-# T3zhOF8sOX0COkGdFDNs9bvcFFRpZjyifMw67I7LYYV5vJPp6AygE60lpGKgtW68
-# A1NmlwSGAJwfqiG3p94d5g98fhqfoURypeLjpLVwenBHwhb9xasXeQLregpcNHq4
-# KE4PEF46NUtBS/N/L5fHh4SKp+zGT49Ai1fAyafgGPDlQ29vlyOuO0xVL2Yb0gWN
-# 40bs0SlKz4sgWVPeYLWQ8oKDr5Bmrg==
+# BTEPFw0yNTEwMTcxOTM0MDlaMC8GCSqGSIb3DQEJBDEiBCB1BiNeyjHQ1Whn02Tr
+# 2+c+SNfDL1nB9pqzwG4es72PLTANBgkqhkiG9w0BAQEFAASCAgBDxMmH9P1aXoh0
+# fYeeNb6ixIuIczicUCQ/Tgct59wFwSgKjOdQwEk/+F3+yLTSALVGu9G6KTerwCxe
+# ecoV0Zzo3/d17wLEzhdebXeaSEvYr+k0nDVcQNjw60EjpmEGncW3PkNMqczhIDOi
+# LUnMWVVVHQ6cZNZYK7dowm4orUiqZvjOlIltyVtnTnG11a1ALetn2ULNESV32xI8
+# DUzcgENsm7Zqy03U16gPiEbAiTKhKj6X9OQw9YFJvtclYuVL4Q7b+9sR3GcIdd9e
+# 0cRdepf0aK6lJEkEm31e8BWO2q6I/Yn1JWuwKvXTrJDuNXB/wxdfemEGqYkJJN7O
+# M+4bfEeL4XOJVyRzjae12tr+Qrtbxm9Sfs4FSkLkCJR5Ga0wi6ETA8t1i/EvGFld
+# 4Lk3RyUKsgSvmA3Oikr23bqusaUMeLyuQdNGNTLanX7YvkvPmMcEm2hxwN56OZ3O
+# +ti2XKXKXNAnlqKGGhiPRkhOHZi3BUczz10At8iLvAIJIokvq6KFyAjbSdlmV5LQ
+# 8D09aXlhHC/r5jqjhgzKoNYG5HdpeMpKAzqrAcE0mKMN4YBLHj7GQYkKOBzPZeCx
+# oEc5OjgETn0umb6h4JzMqF4njh6/1KiyDyvv3l+WhZQXyCGIl3r5EP4HOVR2YW2e
+# zabvLx4eNb5UGVhpImmIG4ZmvIKQow==
 # SIG # End signature block
 

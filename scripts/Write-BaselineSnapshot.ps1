@@ -62,3 +62,4 @@ Nightly validation and build pipelines confirm continuous compliance.
 $Content | Out-File -FilePath $SnapshotFile -Encoding utf8 -Force
 
 Write-Host "✅ Baseline snapshot written to: $SnapshotFile"
+

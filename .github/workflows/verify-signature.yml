@@ -20,42 +20,52 @@ jobs:
           GPG_PUBLIC_KEY_B64: ${{ secrets.CI_GPG_PUBLIC_KEY_B64 }}
           GPG_KEY_ID:          0B57BB923F762D1E
         run: |
-          Write-Host "🔏 Importing public GPG key for verification..."
+          # Normalize GNUPGHOME path safely
+          $gnupg = Join-Path (Convert-Path $env:RUNNER_TEMP) 'gnupg'
+          if (-not (Test-Path $gnupg)) {
+            New-Item -ItemType Directory -Force -Path $gnupg | Out-Null
+          }
 
-          # Normalize GNUPGHOME path
-          $gnupg = Join-Path -Path (Convert-Path $env:RUNNER_TEMP) -ChildPath "gnupg"
-          New-Item -ItemType Directory -Force -Path $gnupg | Out-Null
-
-          # Convert to POSIX path for GPG compatibility
-          $posixPath = ($gnupg -replace '\\','/') -replace '^([A-Z]):','/$($matches[1].ToLower())'
-          $env:GNUPGHOME = $posixPath
-          Write-Host "Using GNUPGHOME = $env:GNUPGHOME"
+          $env:GNUPGHOME = [IO.Path]::GetFullPath($gnupg)
+          Write-Output "Using GNUPGHOME: $env:GNUPGHOME"
 
           # Decode and import the public key
-          $publicPath = Join-Path -Path $env:RUNNER_TEMP -ChildPath "public.asc"
+          $publicPath = Join-Path $env:RUNNER_TEMP 'public.asc'
           [System.IO.File]::WriteAllBytes($publicPath, [Convert]::FromBase64String($env:GPG_PUBLIC_KEY_B64))
-          gpg --batch --homedir "$env:GNUPGHOME" --import "$publicPath"
+
+          # Create writable keyring if missing
+          $pubring = Join-Path $env:GNUPGHOME 'pubring.kbx'
+          if (-not (Test-Path $pubring)) {
+            New-Item -ItemType File -Force -Path $pubring | Out-Null
+          }
+
+          $importResult = & gpg --batch --yes --no-tty --homedir "$env:GNUPGHOME" --import "$publicPath" 2>&1
+          $exit = $LASTEXITCODE
+          $importResult | Out-String | Out-File -FilePath (Join-Path $env:RUNNER_TEMP 'gpg-import.log') -Encoding utf8
           Remove-Item $publicPath -Force
 
-          # Configure Git for verification
+          if ($exit -ne 0) {
+            Write-Error "GPG import failed (exit code $exit). See gpg-import.log for details."
+            exit $exit
+          }
+
+          # Configure Git for signature checks
           git config --global gpg.program "gpg"
           git config --global user.signingkey $env:GPG_KEY_ID
+          Write-Output "Public key $env:GPG_KEY_ID imported successfully."
 
-          Write-Host "✅ Public key $env:GPG_KEY_ID imported successfully."
-          gpg --homedir "$env:GNUPGHOME" --list-keys --keyid-format=short
-
-          # --- 🧪 Lightweight validation -----------------------------------
+          # Optional lightweight test
           $sampleSig = Get-ChildItem -Recurse -Filter "*.asc" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($sampleSig) {
-              Write-Host "🧪 Testing signature verification on $($sampleSig.Name)..."
-              gpg --homedir "$env:GNUPGHOME" --verify $sampleSig.FullName 2>&1 | Write-Host
-              if ($LASTEXITCODE -eq 0) {
-                  Write-Host "✅ GPG validation succeeded: key operational."
-              } else {
-                  Write-Warning "⚠️ GPG test verification returned non-zero exit code."
-              }
+            Write-Output "Testing signature verification on $($sampleSig.Name)..."
+            & gpg --batch --yes --no-tty --homedir "$env:GNUPGHOME" --verify $sampleSig.FullName 2>&1 | Out-String | Out-File -FilePath (Join-Path $env:RUNNER_TEMP 'gpg-verify.log') -Encoding utf8
+            if ($LASTEXITCODE -eq 0) {
+              Write-Output "GPG validation succeeded: key operational."
+            } else {
+              Write-Warning "GPG test verification returned non-zero exit code."
+            }
           } else {
-              Write-Warning "⚠️ No sample .asc signature found for pre-check; continuing to main verification."
+            Write-Warning "No sample .asc signature found for pre-check; continuing to main verification."
           }
 
       - name: 🔍 Verify Digital Signatures
@@ -64,7 +74,12 @@ jobs:
           Write-Output "=== Verifying document signatures ==="
           $Script = "scripts/Verify-PMDocuDRSignatures.ps1"
           if (Test-Path $Script) {
-            pwsh -NoProfile -File $Script -Verbose
+            # Run with fail-fast behavior
+            pwsh -NoLogo -NoProfile -File $Script -FailOnInvalid
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Signature verification failed — stopping workflow."
+              exit $LASTEXITCODE
+            }
           } else {
             Write-Error "Verification script not found: $Script"
             exit 1
