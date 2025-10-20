@@ -21,13 +21,17 @@ jobs:
           GPG_KEY_ID:          0B57BB923F762D1E
         run: |
           Write-Host "🔏 Importing public GPG key for verification..."
-          $env:GNUPGHOME = Join-Path $env:RUNNER_TEMP "gnupg"
-          New-Item -ItemType Directory -Force -Path $env:GNUPGHOME | Out-Null
+
+          # Normalize GNUPGHOME to a valid Windows runner path
+          $gnupg = Join-Path -Path (Convert-Path $env:RUNNER_TEMP) -ChildPath "gnupg"
+          New-Item -ItemType Directory -Force -Path $gnupg | Out-Null
+          $env:GNUPGHOME = $gnupg
+          Write-Host "Using GNUPGHOME = $env:GNUPGHOME"
 
           # Decode and import the public key
-          $publicPath = Join-Path $env:RUNNER_TEMP "public.asc"
+          $publicPath = Join-Path -Path $env:RUNNER_TEMP -ChildPath "public.asc"
           [System.IO.File]::WriteAllBytes($publicPath, [Convert]::FromBase64String($env:GPG_PUBLIC_KEY_B64))
-          gpg --batch --import $publicPath
+          gpg --batch --homedir "$env:GNUPGHOME" --import "$publicPath"
           Remove-Item $publicPath -Force
 
           # Configure Git for verification
@@ -35,23 +39,21 @@ jobs:
           git config --global user.signingkey $env:GPG_KEY_ID
 
           Write-Host "✅ Public key $env:GPG_KEY_ID imported successfully."
-          gpg --list-keys --keyid-format=short
+          gpg --homedir "$env:GNUPGHOME" --list-keys --keyid-format=short
 
           # --- 🧪 Lightweight validation -----------------------------------
           $sampleSig = Get-ChildItem -Recurse -Filter "*.asc" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($sampleSig) {
               Write-Host "🧪 Testing signature verification on $($sampleSig.Name)..."
-              $verifyResult = gpg --verify $sampleSig.FullName 2>&1
+              gpg --homedir "$env:GNUPGHOME" --verify $sampleSig.FullName 2>&1 | Write-Host
               if ($LASTEXITCODE -eq 0) {
                   Write-Host "✅ GPG validation succeeded: key operational."
               } else {
-                  Write-Warning "⚠️ GPG test verification returned non-zero exit code. Details:"
-                  Write-Host $verifyResult
+                  Write-Warning "⚠️ GPG test verification returned non-zero exit code."
               }
           } else {
               Write-Warning "⚠️ No sample .asc signature found for pre-check; continuing to main verification."
           }
-
 
       - name: 🔍 Verify Digital Signatures
         shell: pwsh
