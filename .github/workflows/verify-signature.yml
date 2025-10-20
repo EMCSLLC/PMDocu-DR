@@ -52,8 +52,6 @@ jobs:
               Write-Warning "⚠️ No sample .asc signature found for pre-check; continuing to main verification."
           }
 
-      - name: 🧰 Setup PowerShell
-        uses: actions/setup-powershell@v2
 
       - name: 🔍 Verify Digital Signatures
         shell: pwsh
