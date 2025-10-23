@@ -8,9 +8,6 @@ nightly-evidence-.zip
 docs/_evidence/
 docs/_archive/
 
-# Sensitive Files
-gpg_secrets/
-
 # Temporary and Cache Files
 *.psd1.cache
 *.log

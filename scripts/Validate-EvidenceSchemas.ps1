@@ -190,6 +190,11 @@ else {
     $FooterCheck.message = "CI-Compliance-Matrix.md not found."
 }
 
+# Inject into overall evidence record
+if (-not $Evidence.ContainsKey('footer_check')) {
+    $Evidence['footer_check'] = $FooterCheck
+}
+
 # --- Step: Validate CI-Compliance-Matrix footer timestamp ----------------
 $FooterCheck = [ordered]@{
     file_exists           = $false
@@ -200,10 +205,7 @@ $FooterCheck = [ordered]@{
     message               = ""
 }
 
-# (rest of your footer validation logic that updates $FooterCheck)
-# ...
-# ...
-# After it's fully built and has status + message, THEN build evidence
+
 
 # --- Setup validation Evidence JSON ---
 $OutputFile = Join-Path $EvidenceDir ("SchemaValidation_{0}.json" -f (Get-Date -Format "yyyyMMddTHHmmssZ"))
@@ -296,6 +298,28 @@ else {
 $Evidence['footer_check'] = $FooterCheck
 
 
+# --- Write validation evidence JSON ------------------------------------
+$OutputFile = Join-Path $EvidenceDir ("SchemaValidation_{0}.json" -f (Get-Date -Format "yyyyMMddTHHmmssZ"))
+$Evidence = [ordered]@{
+    schema_version       = "1.0.0"
+    evidence_type        = "SchemaValidationResult"
+    script               = "scripts/Validate-EvidenceSchemas.ps1"
+    timestamp_utc        = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    total_validated      = $total
+    valid_count          = $ValidCount
+    invalid_count        = $InvalidCount
+    missing_count        = $MissingCount
+    completeness_percent = $Completeness
+    draft_enforcement    = $SchemaEnforcement
+    review_reasons       = $ReviewReasons
+    results              = $Results
+    environment          = [ordered]@{
+        os         = if ($env:RUNNER_OS) { $env:RUNNER_OS } elseif ($env:OS) { $env:OS } else { "Unknown OS" }
+        ps_version = $PSVersionTable.PSVersion.ToString()
+        hostname   = $env:COMPUTERNAME
+    }
+    status               = $FinalStatus
+}
 
 # --- Step 7: Generate Markdown Summary (StringBuilder version) ----------------
 $SummaryMdPath = Join-Path $EvidenceDir ("SchemaValidationSummary_{0}.md" -f (Get-Date -Format "yyyyMMddTHHmmssZ"))
@@ -307,26 +331,27 @@ function Add-Line {
     $script:sb.AppendLine($Text) | Out-Null
 }
 
+
 # --- Safety checks -----------------------------------------------------------
 $FooterStatus = if ($FooterCheck -and $FooterCheck.status) { $FooterCheck.status } else { "N/A" }
 $FooterMsg = if ($FooterCheck -and $FooterCheck.message) { $FooterCheck.message } else { "No message." }
 
 # --- Header ------------------------------------------------------------------
-Add-Line ("# 🧩 Schema Validation Summary")
+Add-Line "# 🧩 Schema Validation Summary"
 Add-Line ""
 Add-Line ("**Timestamp (UTC):** {0}" -f $Evidence.timestamp_utc)
-Add-Line ('**Status:** `{0}`' -f $FinalStatus)
+Add-Line ("**Status:** `{0}`" -f $FinalStatus)
 Add-Line ""
 
 # --- Validation Metrics Table ------------------------------------------------
-$CompletenessText = ('{0}%' -f $Completeness)
+$CompletenessText = ("{ 0 }%" -f $Completeness)
 
 $metrics = @(
-    @{ Metric = 'Total Schemas'; Count = $Evidence.total_validated; Details = '' },
-    @{ Metric = 'Valid'; Count = $Evidence.valid_count; Details = '' },
-    @{ Metric = 'Invalid'; Count = $Evidence.invalid_count; Details = '' },
-    @{ Metric = 'Missing'; Count = $Evidence.missing_count; Details = '' },
-    @{ Metric = 'Completeness (%)'; Count = $CompletenessText; Details = '' }
+    @{ Metric = 'Total Schemas';    Count = $Evidence.total_validated;   Details = '' },
+    @{ Metric = 'Valid';            Count = $Evidence.valid_count;       Details = '' },
+    @{ Metric = 'Invalid';          Count = $Evidence.invalid_count;     Details = '' },
+    @{ Metric = 'Missing';          Count = $Evidence.missing_count;     Details = '' },
+    @{ Metric = 'Completeness (%)'; Count = $CompletenessText;           Details = '' }
 )
 
 Add-Line "### 📊 Validation Metrics"
@@ -334,44 +359,44 @@ Add-Line ""
 Add-Line '| Metric | Count | Details |'
 Add-Line '|--------|-------|---------|'
 foreach ($m in $metrics) {
-    Add-Line ("| {0} | {1} | {2} | " -f $m.Metric, $m.Count, $m.Details)
+    Add-Line ("| { 0 } | { 1 } | { 2 } | " -f $m.Metric, $m.Count, $m.Details)
 }
 Add-Line ""
 Add-Line "### ⚙️ Draft Enforcement"
-Add-Line ('**Status:** `{0}`' -f $Evidence.draft_enforcement.status)
-$nonCompliant = if ($Evidence.draft_enforcement.non_compliant -and $Evidence.draft_enforcement.non_compliant.Count -gt 0) {
-    ($Evidence.draft_enforcement.non_compliant -join ', ')
-}
-else { 'None' }
-Add-Line ("**Non-compliant Schemas:** {0}" -f $nonCompliant)
+    Add-Line ('**Status:** `{0}`' -f $Evidence.draft_enforcement.status)
+    $nonCompliant = if ($Evidence.draft_enforcement.non_compliant -and $Evidence.draft_enforcement.non_compliant.Count -gt 0) {
+        ($Evidence.draft_enforcement.non_compliant -join ', ')
+    }
+    else { 'None' }
+    Add-Line ("**Non-compliant Schemas:** {0}" -f $nonCompliant)
 
-# --- Footer Timestamp Validation --------------------------------------------
-Add-Line ""
-Add-Line "### 🕒 Footer Timestamp Validation"
-Add-Line ('**Footer Check Status:** `{0}`' -f $FooterStatus)
-Add-Line ('**Message:** {0}' -f $FooterMsg)
+    # --- Footer Timestamp Validation --------------------------------------------
+    Add-Line ""
+    Add-Line "### 🕒 Footer Timestamp Validation"
+    Add-Line ('**Footer Check Status:** `{0}`' -f $FooterStatus)
+    Add-Line ('**Message:** {0}' -f $FooterMsg)
 
-# --- Footer ------------------------------------------------------------------
-Add-Line ""
-Add-Line '_Generated by `scripts/Validate-EvidenceSchemas.ps1`_'
+    # --- Footer ------------------------------------------------------------------
+    Add-Line ""
+    Add-Line '_Generated by `scripts/Validate-EvidenceSchemas.ps1`_'
 
-# --- Write Markdown summary --------------------------------------------------
-$null = [IO.File]::WriteAllText($SummaryMdPath, $sb.ToString(), [Text.UTF8Encoding]::new($false))
-Write-Output ("🧾 Markdown summary written: {0}" -f $SummaryMdPath)
+    # --- Write Markdown summary --------------------------------------------------
+    $null = [IO.File]::WriteAllText($SummaryMdPath, $sb.ToString(), [Text.UTF8Encoding]::new($false))
+    Write-Output ("🧾 Markdown summary written: {0}" -f $SummaryMdPath)
 
-$Evidence | ConvertTo-Json -Depth 6 | Set-Content -Path $OutputFile -Encoding utf8NoBOM
+    $Evidence | ConvertTo-Json -Depth 6 | Set-Content -Path $OutputFile -Encoding utf8NoBOM
 
-# --- Structured CI Summary ---------------------------------------------
-$EnforceStatus = if ($SchemaDraftEnforcementFailed) { 'FAIL' } else { 'PASS' }
+    # --- Structured CI Summary ---------------------------------------------
+    $EnforceStatus = if ($SchemaDraftEnforcementFailed) { 'FAIL' } else { 'PASS' }
 
-Write-Output ("SUMMARY: VALID={0} INVALID={1} MISSING={2} COMPLETENESS={3}% ENFORCEMENT={4} STATUS={5} REASONS={6}" -f $ValidCount, $InvalidCount, $MissingCount, $Completeness, $EnforceStatus, $FinalStatus, ($ReviewReasons -join ','))
+    Write-Output ("SUMMARY: VALID={0} INVALID={1} MISSING={2} COMPLETENESS={3}% ENFORCEMENT={4} STATUS={5} REASONS={6}" -f $ValidCount, $InvalidCount, $MissingCount, $Completeness, $EnforceStatus, $FinalStatus, ($ReviewReasons -join ','))
 
-Write-Output ("EVIDENCE_FILE={0}" -f $OutputFile)
+    Write-Output ("EVIDENCE_FILE={0}" -f $OutputFile)
 
-# --- Exit Code Logic ---------------------------------------------------
-if ($RequiresReview) {
-    exit 1
-}
-else {
-    exit 0
-}
+    # --- Exit Code Logic ---------------------------------------------------
+    if ($RequiresReview) {
+        exit 1
+    }
+    else {
+        exit 0
+    }
