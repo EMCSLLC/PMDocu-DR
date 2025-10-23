@@ -1,0 +1,76 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://emcsllc.local/schemas/ArchiveResult.schema.json",
+  "title": "ArchiveResult Schema",
+  "description": "Defines structure and validation rules for ArchiveResult evidence created by Create-ArchiveManifest.ps1.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evidence_type",
+    "script",
+    "timestamp_utc",
+    "archive_file",
+    "manifest_file",
+    "total_evidence",
+    "environment",
+    "status"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Version of this evidence schema."
+    },
+    "evidence_type": {
+      "type": "string",
+      "const": "ArchiveResult",
+      "description": "Identifies this record as an ArchiveResult evidence document."
+    },
+    "script": {
+      "type": "string",
+      "description": "The script or process that produced this evidence."
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp when archive creation completed."
+    },
+    "archive_file": {
+      "type": "string",
+      "description": "Path to the generated .zip archive."
+    },
+    "manifest_file": {
+      "type": "string",
+      "description": "Path to the EvidenceArchiveManifest.json file included in the archive."
+    },
+    "included_badge": {
+      "type": "boolean",
+      "description": "Indicates if the docs/badges/evidence-status.svg file was included in the archive."
+    },
+    "signed": {
+      "type": "boolean",
+      "description": "True if the manifest was successfully signed with a GPG key."
+    },
+    "total_evidence": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total count of evidence JSON files included in this archive."
+    },
+    "environment": {
+      "type": "object",
+      "required": ["os", "ps_version", "hostname"],
+      "properties": {
+        "os": { "type": "string" },
+        "ps_version": { "type": "string" },
+        "hostname": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "status": {
+      "type": "string",
+      "enum": ["SUCCESS", "FAILURE"],
+      "description": "Overall status of the archive operation."
+    }
+  }
+}

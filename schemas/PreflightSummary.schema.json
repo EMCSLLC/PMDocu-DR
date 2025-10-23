@@ -1,0 +1,92 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://emcsllc.local/schemas/PreflightSummary.schema.json",
+    "title": "PreflightSummary",
+    "description": "Evidence record summarizing a preflight validation run for PMDocu-DR.",
+    "type": "object",
+    "required": [
+        "schema_version",
+        "evidence_type",
+        "script",
+        "timestamp_utc",
+        "whatif_mode",
+        "scripts_tested",
+        "result",
+        "environment",
+        "log_file"
+    ],
+    "properties": {
+        "schema_version": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+$",
+            "description": "Version of this schema definition (semantic version)."
+        },
+        "evidence_type": {
+            "type": "string",
+            "enum": [
+                "PreflightSummary"
+            ],
+            "description": "Identifies the evidence record type."
+        },
+        "script": {
+            "type": "string",
+            "description": "Source PowerShell script that generated this evidence."
+        },
+        "timestamp_utc": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp of when this preflight run completed."
+        },
+        "whatif_mode": {
+            "type": "boolean",
+            "description": "Indicates if this preflight run executed in simulation (-WhatIf) mode."
+        },
+        "whatif_pref": {
+            "type": [
+                "boolean",
+                "string"
+            ],
+            "description": "Reflects the PowerShell runtime WhatIfPreference variable."
+        },
+        "scripts_tested": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "List of script paths included in the preflight simulation."
+        },
+        "result": {
+            "type": "string",
+            "enum": [
+                "COMPLETED",
+                "FAILED",
+                "SKIPPED"
+            ],
+            "description": "Overall status of the preflight operation."
+        },
+        "environment": {
+            "type": "object",
+            "required": [
+                "os",
+                "ps_version",
+                "hostname"
+            ],
+            "properties": {
+                "os": {
+                    "type": "string"
+                },
+                "ps_version": {
+                    "type": "string"
+                },
+                "hostname": {
+                    "type": "string"
+                }
+            }
+        },
+        "log_file": {
+            "type": "string",
+            "description": "Path to the preflight text log file on disk."
+        }
+    },
+    "additionalProperties": false
+}

@@ -1,0 +1,62 @@
+name: 🧹 Auto-Format PowerShell Scripts
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * 0' # Every Sunday at 04:00 UTC
+
+jobs:
+  format-powershell:
+    name: 🧹 Run PSScriptAnalyzer Auto-Fix
+    runs-on: windows-latest
+
+    permissions:
+      contents: write  # needed for auto-commits
+
+    steps:
+      - name: 🧭 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ⚙️ Setup PowerShell 7
+        uses: actions/setup-pwsh@v4
+        with:
+          pwsh-version: '7.x'
+
+      - name: 📦 Install PSScriptAnalyzer
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -AllowClobber
+
+      - name: 🧩 Apply Formatting Rules
+        shell: pwsh
+        run: |
+          Import-Module PSScriptAnalyzer
+          Write-Host "🧹 Applying analyzer fixes across all PowerShell scripts..."
+          Get-ChildItem -Path . -Recurse -Filter '*.ps1' |
+            Invoke-ScriptAnalyzer -Fix -Settings './config/PSScriptAnalyzerSettings.psd1' -Verbose |
+            Tee-Object -FilePath PSScriptAnalyzerFix.log
+          Write-Host "✅ Formatting pass completed."
+
+      - name: 🧾 Commit and Push Changes (if any)
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add '*.ps1'
+          if (git diff --cached --quiet) {
+            Write-Host "✨ No formatting changes detected."
+          } else {
+            $date = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+            git commit -m "🧹 Auto-format PowerShell scripts via CI ($date)"
+            git push
+            Write-Host "✅ Auto-format commit pushed."
+          }
+
+      - name: 📤 Upload Formatter Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: powershell-format-log
+          path: PSScriptAnalyzerFix.log
+          if-no-files-found: ignore

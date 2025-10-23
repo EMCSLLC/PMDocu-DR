@@ -1,0 +1,80 @@
+name: 🧪 Evidence Integrity Tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"  # Every Monday 6 AM UTC (weekly compliance check)
+
+permissions:
+  contents: read
+
+jobs:
+  validate-evidence:
+    name: Validate Evidence JSON Files
+    runs-on: windows-latest
+
+    steps:
+      - name: 🧩 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # --------------------------------------------------------------
+      # Step 1: Build Governance Documents (Markdown → PDF)
+      # --------------------------------------------------------------
+      - name: 🧾 Build Governance Docs
+        shell: pwsh
+        run: |
+          Write-Host "=== 🧾 Building Governance PDFs ==="
+          pwsh -NoProfile -File scripts/Build-GovDocs.ps1
+        continue-on-error: false
+
+      # --------------------------------------------------------------
+      # Step 2: Verify Hash + GPG Signatures for Built PDFs
+      # --------------------------------------------------------------
+      - name: 🔍 Verify Signed Governance Docs
+        shell: pwsh
+        run: |
+          Write-Host "=== 🔍 Verifying GPG and SHA256 Evidence ==="
+          $releases = Get-ChildItem -Path "docs/releases" -Filter "*.pdf" -ErrorAction SilentlyContinue
+          foreach ($pdf in $releases) {
+              Write-Host "Verifying $($pdf.Name)..."
+              pwsh -NoProfile -File scripts/verify-hash.ps1 -InputFile $pdf.FullName
+          }
+        continue-on-error: false
+
+      # --------------------------------------------------------------
+      # Step 3: Execute Full Evidence Schema Compliance Tests
+      # --------------------------------------------------------------
+      - name: 🧪 Test Evidence Schema Compliance
+        shell: pwsh
+        run: |
+          Write-Host "=== 🧪 Running Test-ValidateEvidenceSchemas.ps1 ==="
+          Invoke-Pester -Path tests/Test-ValidateEvidenceSchemas.ps1 -Output Detailed
+
+      # --------------------------------------------------------------
+      # Step 4: Upload Evidence Validation Reports
+      # --------------------------------------------------------------
+      - name: 📜 Upload Evidence Validation Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-validation-report
+          path: docs/_evidence/SchemaValidation-*.json
+          retention-days: 30
+
+      # --------------------------------------------------------------
+      # Step 5: Generate Evidence Status Badge
+      # --------------------------------------------------------------
+      - name: 🏷️ Generate Evidence Status Badge
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host "=== 🏷️ Generating Evidence Badge ==="
+          pwsh -NoProfile -File scripts/Generate-EvidenceStatusBadge.ps1 -Recheck
+
+      - name: 🧪 Run All Evidence Tests
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File scripts/Collect-PesterSummary.ps1
+

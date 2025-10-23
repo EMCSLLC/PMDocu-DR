@@ -1,0 +1,36 @@
+name: 🧩 Validate Evidence Schemas
+
+on:
+  workflow_dispatch:          # Manual trigger in GitHub UI
+  schedule:
+    - cron: '0 5 * * *'       # Runs daily at 05:00 UTC
+
+jobs:
+  validate:
+    name: Validate Evidence Schemas
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 🧾 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup PowerShell Environment
+        shell: pwsh
+        run: |
+          Write-Host "PowerShell version:"
+          $PSVersionTable.PSVersion
+
+      - name: 🧩 Run Schema Validation
+        shell: pwsh
+        run: |
+          Write-Host "Starting evidence validation..."
+          pwsh -NoProfile -File scripts/Validate-EvidenceSchemas.ps1
+
+      - name: 📦 Upload Evidence Summary (Artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Evidence-Schema-Validation
+          path: docs/_evidence/SchemaValidationSummary_*.md
+          if-no-files-found: ignore

@@ -25,11 +25,6 @@ jobs:
         with:
           fetch-depth: 0  # Needed for git describe to see tags
 
-      - name: ⚙️ Setup PowerShell
-        uses: PowerShell/PowerShell@v1
-        with:
-          pwsh-version: '7.5.0'
-
       - name: 🧩 Generate README.md from template
         id: generate
         run: |

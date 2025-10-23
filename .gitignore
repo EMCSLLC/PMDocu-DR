@@ -1,27 +1,34 @@
-# Ignore build artifacts and temporary files
+# Build Artifacts
 docs/releases/*
 !docs/releases/.gitkeep
 *.sha256
 *.asc
 *.pdf
+nightly-evidence-.zip
+docs/_evidence/
+docs/_archive/
 
-# PowerShell temp and cache
+# Sensitive Files
+gpg_secrets/
+
+# Temporary and Cache Files
 *.psd1.cache
 *.log
 *.bak
 Thumbs.db
 .DS_Store
+desktop.ini
 
-# VSCode / Editor
+# Editor and IDE Files
 .vscode/
 .idea/
 *.code-workspace
 
-# OS junk
-desktop.ini
+# Generated Repository Files
+RepoTree.txt
+test.md
 
 # PMDocu-DR Generated Evidence
-logs/evidence_report_*.json
+docs/_evidence/*.json
 _reviewpacks/
 docs/pm/catalog.json
-

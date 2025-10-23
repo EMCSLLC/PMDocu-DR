@@ -1,0 +1,88 @@
+name: 🗄️ Annual Evidence Archive Rotation
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 2 1 *"  # Runs January 2 at 03:00 UTC each year
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  archive-rotation:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: 🧩 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup PowerShell
+        uses: PowerShell/PowerShell-For-GitHub-Actions@v1
+        with:
+          pwsh-version: '7.5.x'
+
+      - name: 🔏 Import GPG Signing Key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_KEY_ID: "0B57BB923F762D1E"
+        run: |
+          Write-Information "Importing GPG key..."
+          $KeyFile = Join-Path $env:RUNNER_TEMP 'private.asc'
+          [IO.File]::WriteAllText($KeyFile, $env:GPG_PRIVATE_KEY)
+          & gpg --batch --import $KeyFile
+          gpg --list-keys
+
+      - name: 🧹 Cleanup and Backup Evidence
+        run: |
+          Write-Information "=== 🧹 Running Cleanup-Evidence.ps1 ==="
+          $Script = "scripts/Cleanup-Evidence.ps1"
+          if (Test-Path $Script) {
+              pwsh -NoProfile -File $Script
+          } else {
+              Write-Warning "Cleanup-Evidence.ps1 not found — skipping cleanup step."
+          }
+
+      - name: 🧮 Validate Evidence Schemas
+        run: |
+          Write-Information "=== 🧮 Running Validate-EvidenceSchemas.ps1 ==="
+          pwsh -NoProfile -File scripts/Validate-EvidenceSchemas.ps1
+
+      - name: 🗄️ Create Annual Evidence Archive
+        run: |
+          Write-Information "=== 🗄️ Running Create-ArchiveManifest.ps1 ==="
+          pwsh -NoProfile -File scripts/Create-ArchiveManifest.ps1 -KeyID 0B57BB923F762D1E -IncludeBadge
+
+      - name: 🧾 Upload Evidence Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-archive-${{ github.run_number }}
+          path: |
+            docs/_archive/EvidenceArchive_*.zip
+            docs/_archive/EvidenceArchiveManifest.json
+            docs/_archive/EvidenceArchiveManifest.asc
+            docs/_archive/EvidenceArchiveManifest.sha256
+          retention-days: 90
+
+      - name: 🪶 Commit Updated Evidence Badge (Optional)
+        if: ${{ success() }}
+        run: |
+          $BadgePath = "docs/_evidence/evidence-status.svg"
+          if (Test-Path $BadgePath) {
+              git config user.name "github-actions"
+              git config user.email "actions@github.com"
+              git add $BadgePath
+              git commit -m "📊 Update evidence validation badge (annual rotation)"
+              git push
+          } else {
+              Write-Information "No badge file found — skipping commit."
+          }
+
+      - name: ✅ Summary
+        if: ${{ always() }}
+        run: |
+          Write-Host "=== ✅ Annual Evidence Archive Rotation Complete ==="
+          Get-ChildItem docs/_archive | Sort-Object LastWriteTime -Descending | Select-Object -First 5 | Format-Table Name, LastWriteTime

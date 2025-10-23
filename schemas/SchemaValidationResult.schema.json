@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://emcsllc.local/schemas/SchemaValidationResult.schema.json",
+  "title": "SchemaValidationResult Evidence Schema",
+  "description": "Defines schema for results produced by Validate-EvidenceSchemas.ps1 in PMDocu-DR.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evidence_type",
+    "timestamp_utc",
+    "status",
+    "results",
+    "environment"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Version of this evidence schema."
+    },
+    "evidence_type": {
+      "type": "string",
+      "const": "SchemaValidationResult"
+    },
+    "script": {
+      "type": "string",
+      "description": "Path of the script that generated this evidence."
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "total_validated": { "type": "integer", "minimum": 0 },
+    "valid_count": { "type": "integer", "minimum": 0 },
+    "invalid_count": { "type": "integer", "minimum": 0 },
+    "missing_count": { "type": "integer", "minimum": 0 },
+    "completeness_percent": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "draft_enforcement": {
+      "type": "object",
+      "required": ["standard", "status"],
+      "properties": {
+        "enforced": { "type": "boolean" },
+        "standard": { "type": "string", "const": "draft-07" },
+        "non_compliant": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "status": { "type": "string", "enum": ["PASS", "FAIL"] },
+        "checked_count": { "type": "integer", "minimum": 0 },
+        "schema_dir": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "review_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["invalid_files", "missing_schemas", "non_draft7"]
+      },
+      "description": "Reasons that triggered a review requirement, if any."
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["schema", "valid", "timestamp_utc"],
+        "properties": {
+          "schema": { "type": "string" },
+          "evidence": { "type": ["string", "null"] },
+          "valid": { "type": "boolean" },
+          "error": { "type": ["string", "null"] },
+          "note": { "type": ["string", "null"] },
+          "timestamp_utc": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "environment": {
+      "type": "object",
+      "required": ["os", "ps_version", "hostname"],
+      "properties": {
+        "os": { "type": "string" },
+        "ps_version": { "type": "string" },
+        "hostname": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "status": {
+      "type": "string",
+      "enum": ["SUCCESS", "REVIEW_REQUIRED", "FAILURE"]
+    }
+  }
+}

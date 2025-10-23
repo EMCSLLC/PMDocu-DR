@@ -1,0 +1,28 @@
+{
+  "MD013": {
+    "line_length": 500,
+    "code_blocks": false,
+    "tables": false,
+    "headings": false,
+    "headers": false
+  },
+  "MD033": false,
+  "MD041": false,
+  "MD045": false,
+  "MD001": true,
+  "MD004": { "style": "consistent" },
+  "MD005": true,
+  "MD007": { "indent": 2 },
+  "MD009": { "br_spaces": 2 },
+  "MD012": false,
+  "MD018": true,
+  "MD019": true,
+  "MD022": true,
+  "MD025": true,
+  "MD026": false,
+  "MD029": true,
+  "MD036": false,
+  "MD049": { "style": "consistent" },
+  "MD050": { "style": "consistent" },
+  "default": true
+}

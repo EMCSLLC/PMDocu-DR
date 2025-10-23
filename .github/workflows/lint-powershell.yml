@@ -1,83 +1,61 @@
-name: 🧩 Lint PowerShell
+name: 🧹 Lint PowerShell
 
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'scripts/**/*.ps1'
-      - 'modules/**/*.ps1'
-      - '.github/workflows/lint-powershell.yml'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
-  lint:
-    name: 🔍 Run PSScriptAnalyzer
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: pwsh
+  lint-powershell:
+    name: Analyze PowerShell Scripts
+    runs-on: windows-latest
 
     steps:
-      - name: 🧭 Checkout repository
+      - name: 🧩 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: ⚙️ Setup PowerShell
-        uses: PowerShell/PowerShell@v1
-        with:
-          pwsh-version: '7.5.0'
-
-      - name: 📦 Cache PowerShell modules
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/share/powershell/Modules
-          key: ${{ runner.os }}-psmodules-${{ hashFiles('scripts/**/*.ps1', 'modules/**/*.ps1') }}
-          restore-keys: |
-            ${{ runner.os }}-psmodules-
-
-      - name: 🧩 Install PSScriptAnalyzer
+      - name: 🧰 Initialize PowerShell Analyzer
+        shell: pwsh
         run: |
-          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          Write-Output "=== Verifying PSScriptAnalyzer installation ==="
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -AllowClobber
+          Import-Module PSScriptAnalyzer -Force
+          Get-Module PSScriptAnalyzer | Select Name, Version
 
-      - name: 🧪 Run analyzer
-        id: analyze
+      - name: 🔍 Run PSScriptAnalyzer
+        shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $paths = @('scripts','modules')
-          $results = Invoke-ScriptAnalyzer -Path $paths -Recurse -ErrorAction Stop
+          $Settings = "config/PSScriptAnalyzerSettings.psd1"
+          $OutDir   = "docs/_evidence/lint"
+          if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Force -Path $OutDir | Out-Null }
 
-          if ($results) {
-            $errorCount   = ($results | Where-Object { $_.Severity -eq 'Error'   }).Count
-            $warningCount = ($results | Where-Object { $_.Severity -eq 'Warning' }).Count
+          Write-Output "=== Running analyzer with settings: $Settings ==="
+          $Results = Invoke-ScriptAnalyzer -Path "scripts" -Settings $Settings -Recurse -ErrorAction Continue
 
-            $results | Format-Table RuleName, Severity, ScriptName, Line, Message | Out-String | Tee-Object lint.log | Write-Output
+          $JsonPath = Join-Path $OutDir ("lint-powershell-report_{0:yyyyMMdd_HHmmss}.json" -f (Get-Date))
+          $TxtPath  = [IO.Path]::ChangeExtension($JsonPath, ".txt")
 
-            if ($errorCount -gt 0 -or $warningCount -gt 0) {
-              Write-Error "Lint failed: $errorCount errors, $warningCount warnings"
+          $Results | ConvertTo-Json -Depth 5 | Out-File -FilePath $JsonPath -Encoding utf8 -Force
+          $Results | Out-File -FilePath $TxtPath -Encoding utf8 -Force
+
+          Write-Output "Reports generated:"
+          Write-Output " - JSON: $JsonPath"
+          Write-Output " - TXT : $TxtPath"
+
+          $ErrorCount = ($Results | Where-Object { $_.Severity -eq 'Error' }).Count
+          if ($ErrorCount -gt 0) {
+              Write-Error "❌ $ErrorCount PSScriptAnalyzer errors detected."
               exit 1
-            }
-          }
-          else {
-            "No lint issues detected." | Tee-Object lint.log | Write-Output
+          } else {
+              Write-Output "✅ No PowerShell lint errors detected."
           }
 
-      - name: 📦 Upload lint log
+      - name: 📦 Upload Lint Evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lint-report
-          path: lint.log
-
-      - name: 🧾 Summary
-        if: always()
-        run: |
-          $log = Get-Content lint.log -Raw
-          $summary = @"
-          ## 🔍 PowerShell Lint Summary
-          $log
-          "@
-          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+          name: lint-powershell-evidence
+          path: docs/_evidence/lint
+          retention-days: 30

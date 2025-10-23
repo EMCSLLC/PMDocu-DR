@@ -1,0 +1,62 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://emcsllc.local/schemas/VerifyResult.schema.json",
+  "title": "VerifyResult Evidence Schema",
+  "description": "Schema for SHA-256 and GPG verification evidence produced by scripts/verify-hash.ps1.",
+  "type": "object",
+  "required": [
+    "$schema",
+    "timestamp",
+    "status",
+    "input_file",
+    "verified_hash",
+    "expected_hash",
+    "hash_match",
+    "evidence_output"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "status": { "type": "string", "enum": ["SUCCESS", "FAILURE"] },
+    "input_file": { "type": "string" },
+    "hash_file": { "type": "string" },
+    "signature_file": { "type": ["string", "null"] },
+    "verified_hash": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$"
+    },
+    "expected_hash": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$"
+    },
+    "hash_match": { "type": "boolean" },
+    "signature_verified": { "type": "boolean" },
+    "signing_key_id": { "type": ["string", "null"] },
+    "signing_engine": {
+      "type": "object",
+      "required": ["tool", "version", "os", "hostname"],
+      "properties": {
+        "tool": { "type": "string" },
+        "version": { "type": "string" },
+        "os": { "type": "string" },
+        "ps_version": { "type": "string" },
+        "hostname": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "environment": {
+      "type": "object",
+      "required": ["os", "ps_version", "hostname"],
+      "properties": {
+        "os": { "type": "string" },
+        "ps_version": { "type": "string" },
+        "hostname": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "evidence_output": { "type": "string" },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "errors": { "type": "array", "items": { "type": "string" } }
+  }
+}

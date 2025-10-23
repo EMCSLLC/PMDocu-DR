@@ -1,0 +1,91 @@
+/* ============================================================
+   🧾 PMDocu-DR Markdown Viewer Theme
+   ------------------------------------------------------------
+   Purpose: Ensure consistent local preview styling across editors
+   Author : EMCSLLC / PMDocu-DR Project Lead
+   ============================================================ */
+
+/* Global defaults */
+body {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background-color: #ffffff;
+  margin: 2rem auto;
+  max-width: 900px;
+  padding: 0 1rem;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+  color: #000000;
+  font-weight: 600;
+  margin-top: 1.2em;
+  margin-bottom: 0.5em;
+  line-height: 1.25;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+h1 { font-size: 1.8rem; border-bottom: 2px solid #d0d0d0; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+h4 { font-size: 1.1rem; }
+
+/* Links */
+a { color: #0a66c2; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Tables */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.95rem;
+}
+th, td {
+  border: 1px solid #ccc;
+  padding: 0.5em 0.75em;
+}
+th {
+  background-color: #ebebeb; /* light gray header */
+  color: #000;
+  font-weight: 600;
+}
+tr:nth-child(even) td {
+  background-color: #f9f9f9; /* striped rows */
+}
+
+/* Code blocks */
+pre, code {
+  font-family: Consolas, "Courier New", monospace;
+  background-color: #f5f5f5;
+  color: #333;
+  border-radius: 4px;
+}
+pre {
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+code {
+  padding: 0.15rem 0.3rem;
+}
+
+/* Blockquotes */
+blockquote {
+  border-left: 4px solid #ccc;
+  background-color: #f9f9f9;
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  color: #555;
+}
+
+/* Images */
+img {
+  max-width: 100%;
+  display: block;
+  margin: 1rem auto;
+}
+
+/* Horizontal rules */
+hr { border: 0; border-top: 1px solid #ddd; margin: 2rem 0; }

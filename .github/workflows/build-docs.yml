@@ -1,106 +1,74 @@
-name: 🧹 Build & Sign Docs
+name: 🧾 Build Governance PDFs
 
 on:
   push:
-    branches: [ main ]
     paths:
-      - 'docs/**/*.md'
-      - 'scripts/**'
-  pull_request:
-    branches: [ main ]
+      - "docs/gov/**/*.md"
+      - "scripts/Convert-PMDocuDRToPDF.ps1"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-sign:
-    name: 🧾 Build, Sign & Verify
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: pwsh
-
-    env:
-      DOCS_SRC: docs/pm
-      DOCS_OUT: docs/releases
-      SIGN_KEY_ID: ${{ secrets.GPG_KEY_ID }}
-      SIGN_KEY_B64: ${{ secrets.GPG_PRIVATE_KEY }}
-      SIGN_KEY_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+  build-governance-docs:
+    name: Convert & Sign Governance PDFs
+    runs-on: windows-latest
 
     steps:
-      - name: 🧭 Checkout repository
+      - name: 🧩 Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: ⚙️ Setup PowerShell
-        uses: PowerShell/PowerShell@v1
-        with:
-          pwsh-version: '7.5.0'
-
-      - name: 📦 Install dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y pandoc tectonic fonts-dejavu fonts-noto-core fonts-noto-color-emoji
-
-      - name: 🧰 Cache Tectonic packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/Tectonic
-          key: ${{ runner.os }}-tectonic-${{ hashFiles('**/*.md', 'scripts/build-doc.ps1') }}
-          restore-keys: |
-            ${{ runner.os }}-tectonic-
-
-      - name: 🔏 Import GPG private key
-        if: env.SIGN_KEY_B64 != ''
+      - name: 🔏 Import GPG key for signing
+        shell: pwsh
         env:
-          SIGN_KEY_B64: ${{ secrets.GPG_PRIVATE_KEY }}
-        run: |
-          echo "$env:SIGN_KEY_B64" | base64 --decode | gpg --batch --import -
-          gpg --list-secret-keys
+          GPG_PRIVATE_KEY_B64: ${{ secrets.CI_GPG_PRIVATE_KEY_B64 }}
+          GPG_PUBLIC_KEY_B64:  ${{ secrets.CI_GPG_PUBLIC_KEY_B64 }}
+          GPG_KEY_ID:          0B57BB923F762D1E
+          GPG_PASSPHRASE:      ${{ secrets.CI_GPG_PASSPHRASE }}
+        run: pwsh scripts/setup-gpg-signing-ci.ps1
 
-      - name: 🧩 Build and sign Markdown files
+      - name: 🔧 Install Pandoc & LaTeX
         run: |
-          $files = Get-ChildItem -Path $env:DOCS_SRC -Filter *.md -Recurse
-          foreach ($f in $files) {
-            pwsh -NoProfile -File scripts/build-doc.ps1 `
-              -File $f.FullName `
-              -Out  $env:DOCS_OUT `
-              -Font "DejaVu Sans" `
-              -Engine tectonic `
-              -Sign
+          choco install pandoc -y
+          choco install miktex -y
+
+      - name: 🧾 Convert Governance Markdown → PDF
+        shell: pwsh
+        run: |
+          $GovDir = "docs/gov"
+          $Files = Get-ChildItem $GovDir -Filter *.md
+          if (-not $Files) {
+              Write-Warning "No governance Markdown files found to convert."
+              exit 0
+          }
+          foreach ($f in $Files) {
+              Write-Output "📄 Converting $($f.Name)..."
+              pwsh -NoProfile -File "scripts/Convert-PMDocuDRToPDF.ps1" -InputFile $f.FullName
           }
 
-      - name: 🧮 Verify SHA-256 hashes
+      - name: 🔏 Verify and sign all PDFs
+        shell: pwsh
         run: |
-          $pdfs = Get-ChildItem -Path $env:DOCS_OUT -Filter *.pdf -Recurse
-          foreach ($p in $pdfs) {
-            pwsh -NoProfile -File scripts/verify-hash.ps1 -InputFile $p.FullName -Quiet
+          $PdfDir = "docs/releases"
+          $Pdfs = Get-ChildItem $PdfDir -Filter *.pdf
+          if (-not $Pdfs) {
+              Write-Warning "No PDFs found to sign."
+              exit 0
+          }
+          foreach ($pdf in $Pdfs) {
+              pwsh -NoProfile -File "scripts/sign-gpg.ps1" -File $pdf.FullName
           }
 
-      - name: 📦 Upload signed artifacts
+      - name: 📦 Upload Governance PDFs
         uses: actions/upload-artifact@v4
         with:
-          name: signed-docs
-          path: |
-            docs/releases/**/*.pdf
-            docs/releases/**/*.asc
-            docs/releases/**/*.sha256
+          name: governance-pdfs
+          path: docs/releases/*.pdf
+          retention-days: 90
 
-      - name: 🧾 Generate summary
-        if: always()
+      - name: 🧾 Record Evidence JSON
+        shell: pwsh
         run: |
-          $pdfCount  = (Get-ChildItem docs/releases -Filter *.pdf -Recurse).Count
-          $sigCount  = (Get-ChildItem docs/releases -Filter *.asc -Recurse).Count
-          $hashCount = (Get-ChildItem docs/releases -Filter *.sha256 -Recurse).Count
-
-          $summary = @"
-          ## 🧾 PMDocu-DR Build Summary
-          - PDFs built: $pdfCount
-          - Signatures created: $sigCount
-          - Hashes verified: $hashCount
-
-          ✅ All stages passed.
-          "@
-          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+          $Root = (Get-Location).Path
+          pwsh -NoProfile -File "scripts/Build-GovDocsEvidence.ps1" -Root $Root

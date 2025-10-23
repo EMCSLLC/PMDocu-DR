@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/EMCSLLC/PMDocu-DR/schemas/BaselineValidationResult.schema.json",
+  "title": "Baseline Validation Result",
+  "description": "Represents the outcome of a nightly or manual baseline validation operation, including structure checks, snapshot verification, and audit evidence.",
+  "type": "object",
+  "required": ["schema_version", "evidence_type", "timestamp_utc", "status", "results"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Version of the evidence schema used for this record."
+    },
+    "evidence_type": {
+      "type": "string",
+      "enum": ["BaselineValidationResult"],
+      "description": "Type identifier for this evidence structure."
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp when validation was completed."
+    },
+    "workflow": {
+      "type": "string",
+      "description": "GitHub workflow or CI pipeline responsible for the validation."
+    },
+    "script": {
+      "type": "string",
+      "description": "Name or relative path of the script that produced this evidence."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["Success", "Fail", "Partial", "Legacy"],
+      "description": "Overall validation outcome. 'Partial' is allowed for incomplete runs."
+    },
+    "results": {
+      "type": "array",
+      "description": "Detailed per-check results from the baseline validation process.",
+      "items": {
+        "type": "object",
+        "required": ["check", "status"],
+        "properties": {
+          "check": { "type": "string", "description": "The name of the validation check performed." },
+          "status": {
+            "type": "string",
+            "enum": ["Pass", "Fail", "Skipped"],
+            "description": "Outcome of this individual check."
+          },
+          "details": {
+            "type": "string",
+            "description": "Optional notes, failure reason, or context."
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "description": "Optional numeric summary of check results.",
+      "properties": {
+        "total_checks": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Human-readable notes, recommendations, or post-run comments."
+    }
+  },
+  "additionalProperties": false
+}

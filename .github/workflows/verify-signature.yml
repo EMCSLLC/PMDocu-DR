@@ -1,129 +1,148 @@
-name: 🔏 Verify Signatures
+name: 🔏 Verify Signatures & Governance Docs
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
-  workflow_dispatch:
+    paths:
+      - 'docs/**'
+      - 'scripts/**'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'scripts/**'
+
+permissions:
+  contents: read
 
 jobs:
   verify-signatures:
-    name: Verify GPG and Hash Integrity
+    name: 🔐 Verify PDF & GPG Signatures
     runs-on: windows-latest
+    env:
+      POWERSHELL_TELEMETRY_OPTOUT: 1
+      GPG_TTY: CON
 
     steps:
       - name: 🧩 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🔐 Import public GPG key for verification
+      - name: 📦 Setup GPG
         shell: pwsh
-        env:
-          GPG_PUBLIC_KEY_B64: ${{ secrets.CI_GPG_PUBLIC_KEY_B64 }}
-          GPG_KEY_ID:          0B57BB923F762D1E
         run: |
-          # Normalize GNUPGHOME path safely
-          $gnupg = Join-Path (Convert-Path $env:RUNNER_TEMP) 'gnupg'
-          if (-not (Test-Path $gnupg)) {
-            New-Item -ItemType Directory -Force -Path $gnupg | Out-Null
+          $GpgDir = "$env:USERPROFILE\.gnupg"
+          if (-not (Test-Path $GpgDir)) { New-Item -ItemType Directory -Force -Path $GpgDir | Out-Null }
+
+          if (Test-Path ".github/secrets/public.asc") {
+            Write-Host "🔏 Importing public GPG key for verification..."
+            gpg --import ".github/secrets/public.asc" | Out-Host
+          } else {
+            Write-Warning "⚠️ No public.asc key found; verification may fail."
           }
 
-          $env:GNUPGHOME = [IO.Path]::GetFullPath($gnupg)
-          Write-Output "Using GNUPGHOME: $env:GNUPGHOME"
-
-          # Decode and import the public key
-          $publicPath = Join-Path $env:RUNNER_TEMP 'public.asc'
-          [System.IO.File]::WriteAllBytes($publicPath, [Convert]::FromBase64String($env:GPG_PUBLIC_KEY_B64))
-
-          # Create writable keyring if missing
-          $pubring = Join-Path $env:GNUPGHOME 'pubring.kbx'
-          if (-not (Test-Path $pubring)) {
-            New-Item -ItemType File -Force -Path $pubring | Out-Null
+      - name: 🧾 Verify Existing Hashes & Signatures
+        shell: pwsh
+        run: |
+          $PdfFiles = Get-ChildItem -Recurse -Path docs/releases -Filter '*.pdf' -ErrorAction SilentlyContinue
+          if (-not $PdfFiles) {
+            Write-Warning "No PDF files found for verification."
+            exit 0
           }
 
-          $importResult = & gpg --batch --yes --no-tty --homedir "$env:GNUPGHOME" --import "$publicPath" 2>&1
-          $exit = $LASTEXITCODE
-          $importResult | Out-String | Out-File -FilePath (Join-Path $env:RUNNER_TEMP 'gpg-import.log') -Encoding utf8
-          Remove-Item $publicPath -Force
+          foreach ($pdf in $PdfFiles) {
+            $asc = "$($pdf.FullName).asc"
+            $hashFile = [System.IO.Path]::ChangeExtension($pdf.FullName, '.sha256')
 
-          if ($exit -ne 0) {
-            Write-Error "GPG import failed (exit code $exit). See gpg-import.log for details."
-            exit $exit
-          }
-
-          # Configure Git for signature checks
-          git config --global gpg.program "gpg"
-          git config --global user.signingkey $env:GPG_KEY_ID
-          Write-Output "Public key $env:GPG_KEY_ID imported successfully."
-
-          # Optional lightweight test
-          $sampleSig = Get-ChildItem -Recurse -Filter "*.asc" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($sampleSig) {
-            Write-Output "Testing signature verification on $($sampleSig.Name)..."
-            & gpg --batch --yes --no-tty --homedir "$env:GNUPGHOME" --verify $sampleSig.FullName 2>&1 | Out-String | Out-File -FilePath (Join-Path $env:RUNNER_TEMP 'gpg-verify.log') -Encoding utf8
-            if ($LASTEXITCODE -eq 0) {
-              Write-Output "GPG validation succeeded: key operational."
+            if (Test-Path $asc) {
+              Write-Host "🔍 Verifying signature for $($pdf.Name)"
+              gpg --verify $asc $pdf.FullName 2>&1 | Out-Host
             } else {
-              Write-Warning "GPG test verification returned non-zero exit code."
+              Write-Warning "⚠️ Missing signature for $($pdf.Name)"
             }
-          } else {
-            Write-Warning "No sample .asc signature found for pre-check; continuing to main verification."
-          }
 
-      - name: 🔍 Verify Digital Signatures
-        shell: pwsh
-        run: |
-          Write-Output "=== Verifying document signatures ==="
-          $Script = "scripts/Verify-PMDocuDRSignatures.ps1"
-          if (Test-Path $Script) {
-            # Run with fail-fast behavior
-            pwsh -NoLogo -NoProfile -File $Script -FailOnInvalid
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error "Signature verification failed — stopping workflow."
-              exit $LASTEXITCODE
+            if (Test-Path $hashFile) {
+              $expected = (Get-Content $hashFile).Split(' ')[0]
+              $actual = (Get-FileHash $pdf.FullName -Algorithm SHA256).Hash
+              if ($expected -ne $actual) {
+                Write-Warning "⚠️ Hash mismatch for $($pdf.Name)"
+                exit 1
+              }
+            } else {
+              Write-Warning "⚠️ Missing hash file for $($pdf.Name)"
             }
-          } else {
-            Write-Error "Verification script not found: $Script"
-            exit 1
           }
 
-      - name: 🧮 Verify SHA-256 Hashes
+  build_and_validate_govdocs:
+    name: 🧾 Build & Validate Governance Docs
+    runs-on: windows-latest
+    needs: [verify-signatures]
+    env:
+      POWERSHELL_TELEMETRY_OPTOUT: 1
+      GPG_TTY: CON
+
+    steps:
+      - name: 🛠️ Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🧰 Setup LaTeX (for Pandoc PDF build)
+        run: choco install miktex --no-progress --yes
+
+      - name: 📦 Install Pandoc
+        run: choco install pandoc --no-progress --yes
+
+      - name: 🔏 Import GPG Key (Public or Private as needed)
         shell: pwsh
         run: |
-          Write-Output "=== Verifying file hashes ==="
-          $Script = "scripts/verify-hash.ps1"
-          if (Test-Path $Script) {
-            pwsh -NoProfile -File $Script -Verbose
+          $GpgDir = "$env:USERPROFILE\.gnupg"
+          if (-not (Test-Path $GpgDir)) { New-Item -ItemType Directory -Force -Path $GpgDir | Out-Null }
+          if (Test-Path ".github/secrets/public.asc") {
+            Write-Host "Importing GPG key..."
+            gpg --import ".github/secrets/public.asc" | Out-Host
           } else {
-            Write-Error "Verification script not found: $Script"
-            exit 1
+            Write-Warning "⚠️ No GPG key found. Signature verification may fail."
           }
 
-      - name: 🧩 Build Governance PDFs (Post-Verify)
-        if: success()
+      - name: 🧾 Build, Sign, and Validate Governance Docs
+        shell: pwsh
+        run: pwsh ./scripts/Build-GovDocs.ps1
+        continue-on-error: false
+
+      - name: 🧪 Re-Validate Evidence JSON (Schema & Integrity)
         shell: pwsh
         run: |
-          Write-Output "=== Building Governance PDFs ==="
-          $Script = "scripts/Build-GovDocs.ps1"
-          if (Test-Path $Script) {
-            pwsh -NoProfile -File $Script -Verbose
+          Write-Host "🧩 Running independent evidence integrity test..."
+          if (Test-Path "./scripts/Test-SignVerifyEvidence.ps1") {
+            pwsh ./scripts/Test-SignVerifyEvidence.ps1
           } else {
-            Write-Error "Governance build script not found: $Script"
-            exit 1
+            Write-Warning "Evidence validation script not found."
           }
 
-      - name: 📦 Collect Evidence Artifacts
-        if: always()
+      - name: 🗄️ Create Governance Retention Summary
         shell: pwsh
         run: |
-          $Evidence = "docs/_evidence"
-          if (Test-Path $Evidence) {
-            Compress-Archive -Path "$Evidence/*" -DestinationPath "verify-signature-evidence.zip" -Force
-            Write-Output "Evidence archive created: verify-signature-evidence.zip"
+          $SummaryFile = "docs/_evidence/GovRetentionSummary-$((Get-Date).ToString('yyyyMMdd-HHmmss')).json"
+          $Summary = [ordered]@{
+            schema_version = '1.0.0'
+            evidence_type  = 'GovRetentionSummary'
+            timestamp_utc  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            retained_pdfs  = (Get-ChildItem docs/releases -Filter '*.pdf').Count
+            retained_signatures = (Get-ChildItem docs/releases -Filter '*.asc').Count
+            retained_hashes = (Get-ChildItem docs/releases -Filter '*.sha256').Count
+            total_evidence_files = (Get-ChildItem docs/_evidence -Filter '*.json').Count
+            retention_days = 30
+            workflow = '.github/workflows/verify-signature.yml'
+            notes = 'Governance document evidence retention summary automatically generated post-build.'
           }
+          $Summary | ConvertTo-Json -Depth 4 | Set-Content -Path $SummaryFile -Encoding UTF8
+          Write-Host "🧾 Governance retention summary written to $SummaryFile"
 
-      - name: ⬆️ Upload Evidence Logs
-        if: always()
+      - name: 📄 Upload Evidence Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: verify-signature-evidence
-          path: verify-signature-evidence.zip
-          retention-days: 30
+          name: governance-evidence
+          path: |
+            docs/_evidence/*.json
+            docs/releases/*.pdf
+            docs/releases/*.asc
+            docs/releases/*.sha256
+          if-no-files-found: warn

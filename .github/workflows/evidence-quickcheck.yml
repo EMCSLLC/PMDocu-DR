@@ -1,0 +1,61 @@
+name: ⚡ Evidence Quick-Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dev
+      - feature/**
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quick-validate:
+    name: Quick Evidence Validation
+    runs-on: windows-latest
+
+    steps:
+      - name: 🧩 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # --------------------------------------------------------------
+      # Step 1: Verify existing hashes + GPG signatures
+      # --------------------------------------------------------------
+      - name: 🔍 Verify Signed Documents
+        shell: pwsh
+        run: |
+          Write-Host "=== 🔍 Quick verification of GPG and SHA256 ==="
+          $releases = Get-ChildItem -Path "docs/releases" -Filter "*.pdf" -ErrorAction SilentlyContinue
+          if (-not $releases) {
+              Write-Warning "No PDF files found in docs/releases — skipping."
+              exit 0
+          }
+
+          foreach ($pdf in $releases) {
+              Write-Host "Verifying $($pdf.Name)..."
+              pwsh -NoProfile -File scripts/verify-hash.ps1 -InputFile $pdf.FullName
+          }
+
+      # --------------------------------------------------------------
+      # Step 2: Run evidence schema tests only (no rebuilds)
+      # --------------------------------------------------------------
+      - name: 🧪 Validate Evidence JSON Schemas
+        shell: pwsh
+        run: |
+          Write-Host "=== 🧪 Running Test-ValidateEvidenceSchemas.ps1 (Quick Mode) ==="
+          Invoke-Pester -Path tests/Test-ValidateEvidenceSchemas.ps1 -Output Detailed
+
+      # --------------------------------------------------------------
+      # Step 3: Upload only validation evidence (short retention)
+      # --------------------------------------------------------------
+      - name: 📜 Upload Evidence Validation (Quick)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quick-evidence-validation
+          path: docs/_evidence/SchemaValidation-*.json
+          retention-days: 5

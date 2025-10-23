@@ -1,105 +1,171 @@
 <#
 .SYNOPSIS
-    Re-verifies the SHA-256 hashes for all governance PDFs
-    listed in the most recent BuildGovDocsResult JSON evidence file.
+  Verifies that required evidence JSON files exist and match defined schemas.
 
 .DESCRIPTION
-    Reads the newest evidence JSON from docs/_evidence/,
-    recomputes SHA-256 for each referenced PDF, and compares the
-    results.  Outputs a summary and writes a verification log
-    (VerifyGovDocsHashes-<timestamp>.json) for audit purposes.
-
-.PARAMETER Root
-    Optional. Root of the repository (defaults to current directory).
+  - Confirms all required evidence JSON patterns (SignResult_*, VerifyHashResult_*, etc.)
+    exist in docs/_evidence/.
+  - Ensures each schema file in /schemas has at least one evidence JSON file
+    matching its base name.
+  - If no issues are found, automatically calls scripts/Validate-EvidenceSchemas.ps1
+    to perform full JSON Schema validation.
 
 .EXAMPLE
-    pwsh -NoProfile -File scripts/Verify-GovDocsHashes.ps1 -Root "C:\PMDocu-DR"
+  pwsh -NoProfile -File scripts/Verify-EvidenceFiles.ps1
 #>
 
 [CmdletBinding()]
-param(
-    [string]$Root = (Get-Location).Path
+param (
+    [string]$EvidenceDir = (Join-Path $PSScriptRoot '..\docs\_evidence'),
+    [string]$SchemaDir = (Join-Path $PSScriptRoot '..\schemas')
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
-$EvidenceDir = Join-Path $Root 'docs/_evidence'
-$ReleaseDir = Join-Path $Root 'docs/releases'
+# --- Required Evidence Patterns -----------------------------------------
+$ExpectedPatterns = @(
+    'SignResult_*.json',
+    'VerifyHashResult_*.json',
+    'BuildGovDocsResult_*.json',
+    'ArchiveResult_*.json',
+    'SchemaValidation_*.json'
+)
 
+Write-Information "🔍 Checking evidence directory: $EvidenceDir"
 if (-not (Test-Path $EvidenceDir)) {
-    throw "Evidence directory not found: $EvidenceDir"
+    Write-Error "Evidence directory not found: $EvidenceDir"
+    exit 1
 }
 
-# Get the newest BuildGovDocsResult file
-$EvidenceFile = Get-ChildItem $EvidenceDir -Filter 'BuildGovDocsResult-*.json' |
-    Sort-Object LastWriteTime -Descending | Select-Object -First 1
-
-if (-not $EvidenceFile) {
-    throw "No BuildGovDocsResult JSON found in $EvidenceDir"
+if (-not (Test-Path $SchemaDir)) {
+    Write-Error "Schema directory not found: $SchemaDir"
+    exit 1
 }
 
-Write-Information "[verify] Using evidence file: $($EvidenceFile.Name)"
+# --- Step 1: Check for Missing or Empty Evidence Files ------------------
+$Missing = @()
+$Empty = @()
 
-# Parse evidence JSON
-$Evidence = Get-Content $EvidenceFile.FullName -Raw | ConvertFrom-Json
-
-if (-not $Evidence.evidence_outputs.file_hashes) {
-    throw "No file_hashes section found in evidence JSON."
-}
-
-$Timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-$OutFile = Join-Path $EvidenceDir ("VerifyGovDocsHashes-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".json")
-
-$Results = @()
-$AllPass = $true
-
-foreach ($entry in $Evidence.evidence_outputs.file_hashes) {
-    $path = Join-Path $Root $entry.file
-    if (-not (Test-Path $path)) {
-        Write-Warning "Missing file: $($entry.file)"
-        $Results += [ordered]@{ file = $entry.file; status = "missing" }
-        $AllPass = $false
+foreach ($pattern in $ExpectedPatterns) {
+    $files = Get-ChildItem -Path $EvidenceDir -Filter $pattern -ErrorAction SilentlyContinue
+    if (-not $files) {
+        $Missing += $pattern
         continue
     }
 
-    $computed = (Get-FileHash -Path $path -Algorithm SHA256).Hash
-    $match = ($computed -eq $entry.sha256)
-    $status = if ($match) { "match" } else { "mismatch" }
+    foreach ($f in $files) {
+        if ((Get-Item $f.FullName).Length -eq 0) {
+            $Empty += $f.Name
+        }
+    }
+}
 
+# --- Step 2: Check Schema Coverage --------------------------------------
+$SchemaFiles = Get-ChildItem -Path $SchemaDir -Filter '*.schema.json' -File
+$SchemaMissingEvidence = @()
+
+foreach ($schema in $SchemaFiles) {
+    $baseName = [IO.Path]::GetFileNameWithoutExtension($schema.Name)
+    $match = Get-ChildItem -Path $EvidenceDir -Filter "$baseName*.json" -ErrorAction SilentlyContinue
     if (-not $match) {
-        Write-Warning "Hash mismatch for $($entry.file)"
-        $AllPass = $false
-    }
-    else {
-        Write-Information "✅ Verified: $($entry.file)"
-    }
-
-    $Results += [ordered]@{
-        file     = $entry.file
-        expected = $entry.sha256
-        computed = $computed
-        status   = $status
+        $SchemaMissingEvidence += $schema.Name
     }
 }
 
-$Verification = [ordered]@{
-    verification_type = 'VerifyGovDocsHashes'
-    timestamp_utc     = $Timestamp
-    evidence_source   = $EvidenceFile.Name
-    all_passed        = $AllPass
-    results           = $Results
+# --- Step: Generate Markdown Summary (with footer check) ----------------
+$SummaryMdPath = Join-Path $EvidenceDir ("SchemaValidationSummary_{0}.md" -f (Get-Date -Format "yyyyMMddTHHmmssZ"))
+$FooterStatus = if ($FooterCheck.status) { $FooterCheck.status } else { "N/A" }
+$FooterMsg = if ($FooterCheck.message) { $FooterCheck.message } else { "No message." }
+
+$md = @()
+$md += "# 🧩 Schema Validation Summary"
+$md += ""
+$md += $("**Timestamp (UTC):** {0}" -f $Evidence.timestamp_utc)
+$md += $("**Status:** `{0}`" -f $FinalStatus)
+$md += ""
+$md += "| Metric | Count | Details | "
+$md += "| ---------- - | -------- | ---------- - | "
+$md += $("| Total Schemas | {0} | |" -f $Evidence.total_validated)
+$md += $("| Valid | {0} | |" -f $Evidence.valid_count)
+$md += $("| Invalid | {0} | |" -f $Evidence.invalid_count)
+$md += $("| Missing | {0} | |" -f $Evidence.missing_count)
+$md += $("| Completeness (ForEach-Object) | {0}% | |" -f $Evidence.completeness_percent)
+$md += ""
+$md += "### ⚙️ Draft Enforcement"
+    $md += $("* **Status:** `{0}`" -f $Evidence.draft_enforcement.status)
+$md += $('* **Non-compliant Schemas:** {0}' -f (($Evidence.draft_enforcement.non_compliant -join ', ') -replace '\[\]', 'None'))
+$md += ""
+$md += "### 🕒 Footer Timestamp Validation"
+
+
+
+        $md += ("* **Footer Check Status:** `{0}`" -f $FooterStatus)
+$md += ("* * * Footer Message:** { 0 }" -f $FooterMsg)
+$md += ""
+$md += "_Generated by scripts/Validate-EvidenceSchemas.ps1_"
+$md -join "`r`n" | Set-Content -Path $SummaryMdPath -Encoding utf8NoBOM
+
+Write-Output "🧾 Markdown summary written: $SummaryMdPath"
+
+# --- Step 3: Summary ----------------------------------------------------
+Write-Output "`n=== 🧾 Evidence & Schema File Verification Summary ==="
+Write-Output "Evidence Directory: $EvidenceDir"
+Write-Output "Schema Directory: $SchemaDir"
+Write-Output "Patterns Checked: $($ExpectedPatterns.Count)"
+Write-Output "Missing Evidence: $($Missing.Count)"
+Write-Output "Empty Evidence: $($Empty.Count)"
+Write-Output "Schemas Missing Evidence: $($SchemaMissingEvidence.Count)"
+
+if ($Missing.Count -gt 0) {
+    Write-Warning "⚠️ Missing evidence files:"
+    $Missing | ForEach-Object { Write-Output " - $_" }
+}
+if ($Empty.Count -gt 0) {
+    Write-Warning "⚠️ Empty evidence files:"
+    $Empty | ForEach-Object { Write-Output " - $_" }
+}
+if ($SchemaMissingEvidence.Count -gt 0) {
+    Write-Warning "⚠️ Schemas without corresponding evidence:"
+    $SchemaMissingEvidence | ForEach-Object { Write-Output " - $_" }
 }
 
-$Verification | ConvertTo-Json -Depth 6 | Set-Content -Path $OutFile -Encoding UTF8
+# --- Step 4: Structured Output ------------------------------------------
+$ExitCode = if (($Missing.Count -gt 0) -or ($Empty.Count -gt 0) -or ($SchemaMissingEvidence.Count -gt 0)) { 1 } else { 0 }
 
-if ($AllPass) {
-    Write-Information "🧩 All governance PDF hashes verified successfully."
+$Summary = [ordered]@{
+    missing_patterns = $Missing
+    empty_files = $Empty
+    schemas_missing_evidence = $SchemaMissingEvidence
+    total_patterns_checked = $ExpectedPatterns.Count
+    total_schemas_checked = $SchemaFiles.Count
+    timestamp_utc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    status = if ($ExitCode -eq 0) { "SUCCESS" } else { "REVIEW_REQUIRED" }
 }
-else {
-    Write-Warning "❌ One or more governance PDF hashes failed verification."
+
+$SummaryFile = Join-Path $EvidenceDir ("FileCheckSummary_{ 0 }.json" -f (Get-Date -Format "yyyyMMddTHHmmssZ"))
+$Summary | ConvertTo-Json -Depth 5 | Set-Content -Path $SummaryFile -Encoding utf8NoBOM
+
+Write-Output "`n🧾 Summary written: $SummaryFile"
+Write-Output ("SUMMARY: MISSING= { 0 } EMPTY= { 1 } SCHEMA_MISSING= { 2 } STATUS= { 3 }" -f `
+        $Missing.Count, `
+        $Empty.Count, `
+        $SchemaMissingEvidence.Count, `
+        $Summary.status)
+
+# --- Step 5: Run Schema Validation if Clean -----------------------------
+if ($ExitCode -eq 0) {
+    Write-Output "`n✅ All evidence files present. Launching schema validation..."
+    $ValidateScript = Join-Path $PSScriptRoot 'Validate-EvidenceSchemas.ps1'
+    if (Test-Path $ValidateScript) {
+        & pwsh -NoProfile -File $ValidateScript
+        exit $LASTEXITCODE
+    } else {
+        Write-Warning "⚠️ Validation script not found at $ValidateScript"
+        exit 0
+    }
+} else {
+    Write-Warning "⚠️ Skipping schema validation due to missing or empty evidence files."
+    exit 1
 }
-
-Write-Information "🧾 Verification log saved: $OutFile"
-

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/EMCSLLC/PMDocu-DR/schemas/TestBuildGovDocsEvidence.schema.json",
+  "title": "Test Build Governance Documents Evidence",
+  "description": "Evidence for test builds of governance documentation during CI dry-runs or validation stages.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evidence_type",
+    "timestamp_utc",
+    "workflow",
+    "status",
+    "overall_status"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "evidence_type": { "type": "string", "enum": ["TestBuildGovDocsEvidence"] },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "workflow": { "type": "string" },
+    "source_file": { "type": "string" },
+    "status": { "type": "string", "enum": ["Success", "Fail", "Legacy"] },
+    "missing_keys": { "type": "array", "items": { "type": "string" } },
+    "overall_status": { "type": "string", "enum": ["Success", "Fail"] },
+    "notes": { "type": "string" }
+  },
+  "additionalProperties": false
+}

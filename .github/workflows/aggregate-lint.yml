@@ -1,0 +1,91 @@
+name: 🧩 Aggregate Lint Evidence
+
+on:
+  workflow_run:
+    workflows: ["🧩 Lint PowerShell", "📝 Lint Markdown"]
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  aggregate:
+    name: 🧩 Merge Lint Results
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: .
+
+    steps:
+      - name: 🧭 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📥 Download latest lint artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: lint-artifacts
+
+      - name: 🧩 Aggregate lint logs into evidence JSON
+        run: |
+          $evidenceDir = "docs/_evidence"
+          if (-not (Test-Path $evidenceDir)) {
+              New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
+          }
+
+          $logs = Get-ChildItem -Path "lint-artifacts" -Filter "*.log" -Recurse
+          if (-not $logs) {
+              Write-Warning "No lint logs found to aggregate."
+              exit 0
+          }
+
+          $aggregate = foreach ($log in $logs) {
+              $content = Get-Content $log -Raw
+              $lines = $content -split "`r?`n"
+              [PSCustomObject]@{
+                  file      = $log.Name
+                  errors    = ($lines | Where-Object { $_ -match "Error" }).Count
+                  warnings  = ($lines | Where-Object { $_ -match "Warning" }).Count
+                  path      = $log.FullName
+              }
+          }
+
+          $summary = [PSCustomObject]@{
+              generated       = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss UTC")
+              commit          = "${{ github.sha }}"
+              repo            = "${{ github.repository }}"
+              total_errors    = ($aggregate.errors | Measure-Object -Sum).Sum
+              total_warnings  = ($aggregate.warnings | Measure-Object -Sum).Sum
+              details         = $aggregate
+          }
+
+          $jsonPath = Join-Path $evidenceDir ("LintSummary-{0}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+          $summary | ConvertTo-Json -Depth 5 | Out-File -FilePath $jsonPath -Encoding utf8 -Force
+          Write-Output "✅ Evidence recorded: $jsonPath"
+
+      - name: 📦 Upload lint evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-evidence
+          path: docs/_evidence/LintSummary-*.json
+          retention-days: 90
+
+      - name: 🧾 Summary
+        if: always()
+        run: |
+          $file = Get-ChildItem docs/_evidence -Filter "LintSummary-*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $data = Get-Content $file.FullName -Raw | ConvertFrom-Json
+          @"
+          ## 🧩 Lint Aggregation Summary
+          - Repository: $($data.repo)
+          - Commit: $($data.commit)
+          - Generated: $($data.generated)
+          - Total Errors: $($data.total_errors)
+          - Total Warnings: $($data.total_warnings)
+          ✅ Evidence stored at: $($file.Name)
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+

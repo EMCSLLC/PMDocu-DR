@@ -1,0 +1,32 @@
+      name: Generate Baseline Snapshot
+      
+      on:
+        workflow_dispatch:
+      
+      jobs:
+        generate-baseline:
+          runs-on: ubuntu-latest
+          steps:
+            - name: 🧾 Generate Baseline Snapshot
+              if: success() || always()
+              shell: pwsh
+              run: |
+                Write-Output "=== Generating Baseline Snapshot ==="
+                $ScriptPath = "scripts/Write-BaselineSnapshot.ps1"
+                if (Test-Path $ScriptPath) {
+                  pwsh -NoProfile -File $ScriptPath `
+                    -FromTemplate "docs/_templates/Baseline-Template.md" `
+                    -OutDir "docs/releases"
+                  if ($LASTEXITCODE -ne 0) { throw "Baseline generation failed." }
+                } else {
+                  Write-Warning "Baseline snapshot script not found — skipping."
+                }
+      
+            - name: ⬆️ Upload Baseline Snapshot
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                name: baseline-snapshot
+                path: docs/releases/Baseline-*.md
+                retention-days: 90
+

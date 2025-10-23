@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://emcsllc.local/schemas/BuildGovDocsResult.schema.json",
+  "title": "BuildGovDocsResult Evidence Schema",
+  "description": "Schema for document build operations converting Markdown → PDF during governance evidence generation.",
+  "type": "object",
+  "required": [
+    "$schema",
+    "timestamp",
+    "status",
+    "source_files",
+    "output_files",
+    "converter",
+    "duration_seconds",
+    "evidence_output"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "status": {
+      "type": "string",
+      "enum": ["SUCCESS", "FAILURE", "PARTIAL"]
+    },
+    "source_files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of Markdown source files processed."
+    },
+    "output_files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of resulting PDF files generated."
+    },
+    "converter": {
+      "type": "object",
+      "required": ["tool", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "tool": { "type": "string", "description": "Tool used for conversion (e.g., Pandoc, XeLaTeX)." },
+        "version": { "type": "string" },
+        "options": { "type": ["string", "null"], "description": "Command-line flags or parameters used." }
+      }
+    },
+    "duration_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Execution time for the build process."
+    },
+    "environment": {
+      "type": "object",
+      "description": "Optional system information describing the environment used to generate the evidence.",
+      "required": ["os", "ps_version", "hostname"],
+      "additionalProperties": false,
+      "properties": {
+        "os": { "type": "string" },
+        "ps_version": { "type": "string" },
+        "hostname": { "type": "string" }
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "errors": { "type": "array", "items": { "type": "string" } },
+    "evidence_output": { "type": "string" }
+  }
+}
