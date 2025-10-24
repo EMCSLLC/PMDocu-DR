@@ -157,12 +157,10 @@ Add-MdLine ("| Hostname | {0} |" -f $Summary.environment.hostname)
 Add-MdLine ""
 Add-MdLine "---"
 Add-MdLine ""
-Add-MdLine ("**Log File:** [{0}]({0})" -f $Summary.log_file)
-Add-MdLine ("**Schema Version:** `{0}`" -f $Summary.schema_version)
+Add-MdLine ('**Log File:** [{0}]({0})' -f $Summary.log_file)
+Add-MdLine ('**Schema Version:** `{0}`' -f $Summary.schema_version)
 Add-MdLine ""
 Add-MdLine '_Generated automatically by `scripts/Run-Preflight.ps1`_'
 
 # Write markdown file
 [IO.File]::WriteAllText($MdSummaryPath, $sbMd.ToString(), [System.Text.UTF8Encoding]::new($false))
-$logMsg = "Markdown summary written to: $MdSummaryPath"
-Add-Log $logMsg
