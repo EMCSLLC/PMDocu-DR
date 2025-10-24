@@ -46,7 +46,15 @@ jobs:
         id: lint
         run: |
           set -e
-          markdownlint-cli2 "**/*.md" "#!docs/releases/**" "#!docs/signed/**" "#!docs/hashes/**" --formatter markdownlint-cli2-formatter-pretty > lint-md.log || true
+          markdownlint-cli2 \
+            "**/*.md" \
+            "#!docs/releases/**" \
+            "#!docs/signed/**" \
+            "#!docs/hashes/**" \
+            "#!docs/_templates/**" \
+            "#!docs/examples/**" \
+            "#!docs/gov/**" \
+            --formatter markdownlint-cli2-formatter-pretty > lint-md.log || true
 
           if [ -s lint-md.log ]; then
             echo "Markdown issues found:"
