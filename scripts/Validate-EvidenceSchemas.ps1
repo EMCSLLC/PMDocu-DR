@@ -60,7 +60,10 @@ $SchemaDir = Join-Path $RepoRoot 'schemas'
 $EvidenceDir = Join-Path $RepoRoot 'docs/_evidence'
 
 if (-not (Test-Path $SchemaDir)) { throw "Schema directory not found: $SchemaDir" }
-if (-not (Test-Path $EvidenceDir)) { throw "Evidence directory not found: $EvidenceDir" }
+if (-not (Test-Path $EvidenceDir)) {
+    # Ensure evidence directory exists for CI runs and local execution
+    New-Item -ItemType Directory -Path $EvidenceDir -Force | Out-Null
+}
 
 # --- Load schemas -------------------------------------------------------
 $Schemas = Get-ChildItem $SchemaDir -Filter '*.schema.json' -File

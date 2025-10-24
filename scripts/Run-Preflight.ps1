@@ -164,4 +164,4 @@ Add-MdLine '_Generated automatically by `scripts/Run-Preflight.ps1`_'
 
 # Write markdown file
 [IO.File]::WriteAllText($MdSummaryPath, $sbMd.ToString(), [System.Text.UTF8Encoding]::new($false))
-Add-Log ("Markdown summary written to: { 0 }" -f $MdSummaryPath)
+Add-Log ("Markdown summary written to: " + $MdSummaryPath)
