@@ -28,7 +28,8 @@ $InformationPreference = 'Continue'
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $EvidenceDir = Join-Path $RepoRoot 'docs/_evidence'
 if (-not (Test-Path $EvidenceDir)) {
-    New-Item -ItemType Directory -Force -Path $EvidenceDir | Out-Null
+    # Ensure directory is created even under WhatIf preference
+    [System.IO.Directory]::CreateDirectory($EvidenceDir) | Out-Null
 }
 
 # --- Initialize log writer -------------------------------------------------
