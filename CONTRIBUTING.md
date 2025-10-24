@@ -54,6 +54,21 @@ Protect `main` and require these checks before merge:
 - Evidence Schema Validation
 - Preflight (WhatIf)
 
+You can enable this via GitHub CLI with a helper script:
+
+```powershell
+pwsh -NoProfile -File tools/Enable-BranchProtection.ps1 `
+  -Repo "EMCSLLC/PMDocu-DR" `
+  -Branch "main" `
+  -Checks @(
+    'Lint PowerShell',
+    'Pester Tests',
+    'Evidence Schema Validation',
+    'Preflight (WhatIf)'
+  ) `
+  -RequiredApprovals 1
+```
+
 ## Tips
 
 - If the Problems panel shows stale errors, try: “PowerShell: Restart Session” in VS Code
