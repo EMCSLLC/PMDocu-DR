@@ -42,12 +42,12 @@ jobs:
         shell: pwsh
         run: |
           Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
-          Import-Module Pester
+          Import-Module Pester -MinimumVersion 5.0.0 -Force
       - name: Run Pester
         shell: pwsh
         run: |
-          Import-Module Pester
-          $conf = [Pester.Configuration]::Default
+          Import-Module Pester -MinimumVersion 5.0.0 -Force
+          $conf = New-PesterConfiguration
           $conf.Run.Path = 'tests'
           $conf.TestResult.Enabled = $true
           $conf.TestResult.OutputPath = 'TestResults.xml'

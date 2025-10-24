@@ -190,10 +190,7 @@ else {
     $FooterCheck.message = "CI-Compliance-Matrix.md not found."
 }
 
-# Inject into overall evidence record
-if (-not $Evidence.ContainsKey('footer_check')) {
-    $Evidence['footer_check'] = $FooterCheck
-}
+# (footer_check will be attached after Evidence object is created)
 
 # --- Step: Validate CI-Compliance-Matrix footer timestamp ----------------
 $FooterCheck = [ordered]@{
@@ -319,6 +316,7 @@ $Evidence = [ordered]@{
         hostname   = $env:COMPUTERNAME
     }
     status               = $FinalStatus
+    footer_check         = $FooterCheck
 }
 
 # --- Step 7: Generate Markdown Summary (StringBuilder version) ----------------
@@ -344,7 +342,7 @@ Add-Line ("**Status:** `{0}`" -f $FinalStatus)
 Add-Line ""
 
 # --- Validation Metrics Table ------------------------------------------------
-$CompletenessText = "{ 0 }%" -f $Completeness
+$CompletenessText = '{0}%' -f $Completeness
 
 $metrics = @(
     @{ Metric = 'Total Schemas';    Count = $Evidence.total_validated;   Details = '' },
@@ -355,14 +353,14 @@ $metrics = @(
 )
 
 Add-Line "### 📊 Validation Metrics"
-Add-Line ""
-Add-Line '| Metric | Count | Details |'
-Add-Line '|--------|-------|---------|'
-foreach ($m in $metrics) {
-    Add-Line ("| { 0 } | { 1 } | { 2 } | " -f $m.Metric, $m.Count, $m.Details)
-}
-Add-Line ""
-Add-Line "### ⚙️ Draft Enforcement"
+    Add-Line ""
+    Add-Line '| Metric | Count | Details |'
+    Add-Line '|--------|-------|---------|'
+    foreach ($m in $metrics) {
+        Add-Line ("| {0} | {1} | {2} |" -f $m.Metric, $m.Count, $m.Details)
+    }
+    Add-Line ""
+    Add-Line "### ⚙️ Draft Enforcement"
     Add-Line ('**Status:** `{0}`' -f $Evidence.draft_enforcement.status)
     $nonCompliant = if ($Evidence.draft_enforcement.non_compliant -and $Evidence.draft_enforcement.non_compliant.Count -gt 0) {
         ($Evidence.draft_enforcement.non_compliant -join ', ')
