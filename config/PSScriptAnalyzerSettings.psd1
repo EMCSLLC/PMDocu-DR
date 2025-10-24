@@ -40,7 +40,7 @@
         # Prefer readability for generated Markdown/content blocks
         PSAvoidLongLines                               = @{
             Enable            = $true
-            MaximumLineLength = 240 # allow longer Markdown strings without noise
+            MaximumLineLength = 300 # allow longer Markdown strings without noise
         }
 
         # ─── Maintainability / Best Practices ─────────────────
