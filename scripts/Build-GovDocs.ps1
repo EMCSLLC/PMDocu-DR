@@ -64,18 +64,42 @@ $OutputFiles = @()
 $Warnings = @()
 $Errors = @()
 
+# --- Sanitization setup --------------------------------------------------
+$TempMdDir = Join-Path ([System.IO.Path]::GetTempPath()) "pmdocu_govdocs"
+if (-not (Test-Path $TempMdDir)) { New-Item -ItemType Directory -Force -Path $TempMdDir | Out-Null }
+
+function Convert-MarkdownToSanitizedFile {
+    param(
+        [Parameter(Mandatory)] [string] $InputPath
+    )
+    # Remove control chars except TAB (\x09), LF (\x0A), CR (\x0D)
+    $raw = Get-Content -Path $InputPath -Raw -Encoding utf8
+    $pattern = '[\x00-\x08\x0B-\x0C\x0E-\x1F]'
+    $ctrlMatches = [System.Text.RegularExpressions.Regex]::Matches($raw, $pattern)
+    if ($ctrlMatches.Count -gt 0) {
+        $clean = [System.Text.RegularExpressions.Regex]::Replace($raw, $pattern, '')
+        $outPath = Join-Path $TempMdDir ([IO.Path]::GetFileName($InputPath))
+        $clean | Set-Content -Path $outPath -Encoding utf8NoBOM
+        $Warnings += "Sanitized $($ctrlMatches.Count) control character(s) in: $InputPath"
+        return $outPath
+    }
+    return $InputPath
+}
+
 # --- File conversion loop -------------------------------------------------
 foreach ($dir in $SrcDirs) {
     Write-Host "📂 Scanning $dir ..."
     $mdFiles = Get-ChildItem -Path $dir -Filter '*.md' -File -ErrorAction SilentlyContinue
     foreach ($file in $mdFiles) {
-        $SourceFiles += $file.FullName
+    $SourceFiles += $file.FullName
+    # Sanitize input if needed (control chars like U+0008 can break LaTeX)
+    $inputPath = Convert-MarkdownToSanitizedFile -InputPath $file.FullName
         $pdfName = [System.IO.Path]::ChangeExtension($file.Name, '.pdf')
         $pdfPath = Join-Path $OutDir $pdfName
         try {
             Write-Host "🛠️  Converting: $($file.Name) → $pdfName"
             $pandocArgs = @(
-                $file.FullName,
+                $inputPath,
                 '-o', $pdfPath,
                 '--pdf-engine=xelatex'
             )
