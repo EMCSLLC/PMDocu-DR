@@ -41,7 +41,7 @@ $json = $body | ConvertTo-Json -Depth 6
 
 Write-Host ("Applying branch protection to {0}@{1}..." -f $Repo, $Branch) -ForegroundColor Cyan
 
-# Apply protection with a one-time retry on failure
+# Apply protection with a one-time retry on failure (no loop)
 function Invoke-ApplyBranchProtection {
     param(
         [string]$OwnerRepo,
@@ -58,26 +58,18 @@ function Invoke-ApplyBranchProtection {
     }
 }
 
-$maxAttempts = 2 # one initial attempt + one retry
-$attempt = 1
-while ($true) {
+try {
+    Invoke-ApplyBranchProtection -OwnerRepo $Repo -BranchName $Branch -JsonBody $json
+}
+catch {
+    Write-Warning ("Apply failed (attempt 1/2): {0}" -f $_.Exception.Message)
+    Start-Sleep -Seconds 2
     try {
         Invoke-ApplyBranchProtection -OwnerRepo $Repo -BranchName $Branch -JsonBody $json
-        if ($attempt -gt 1) {
-            Write-Host ("Succeeded after retry (attempt {0})." -f $attempt) -ForegroundColor Yellow
-        }
-        break
+        Write-Host "Succeeded after one retry (attempt 2)." -ForegroundColor Yellow
     }
     catch {
-        if ($attempt -lt $maxAttempts) {
-            Write-Warning ("Apply failed (attempt {0}/{1}): {2}" -f $attempt, $maxAttempts, $_.Exception.Message)
-            Start-Sleep -Seconds 2
-            $attempt++
-            continue
-        }
-        else {
-            throw
-        }
+        throw
     }
 }
 
