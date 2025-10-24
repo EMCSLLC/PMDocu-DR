@@ -91,9 +91,9 @@ foreach ($dir in $SrcDirs) {
     Write-Host "📂 Scanning $dir ..."
     $mdFiles = Get-ChildItem -Path $dir -Filter '*.md' -File -ErrorAction SilentlyContinue
     foreach ($file in $mdFiles) {
-    $SourceFiles += $file.FullName
-    # Sanitize input if needed (control chars like U+0008 can break LaTeX)
-    $inputPath = Convert-MarkdownToSanitizedFile -InputPath $file.FullName
+        $SourceFiles += $file.FullName
+        # Sanitize input if needed (control chars like U+0008 can break LaTeX)
+        $inputPath = Convert-MarkdownToSanitizedFile -InputPath $file.FullName
         $pdfName = [System.IO.Path]::ChangeExtension($file.Name, '.pdf')
         $pdfPath = Join-Path $OutDir $pdfName
         try {
