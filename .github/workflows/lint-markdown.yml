@@ -25,6 +25,10 @@ jobs:
       - name: 🧭 Checkout repository
         uses: actions/checkout@v4
 
+      - name: 🚨 Check control characters in Markdown
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/Check-ControlChars.ps1
+
       - name: ⚙️ Setup Node.js
         uses: actions/setup-node@v4
         with:
