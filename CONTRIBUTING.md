@@ -39,6 +39,7 @@ pwsh -NoProfile -File scripts/Run-Preflight.ps1 -WhatIf
 
 ## CI checks (PRs)
 
+
 - Lint PowerShell (Error-level findings fail the job)
 - Pester Tests (publishes JUnit results)
 - Evidence Schema Validation (WhatIf)
@@ -49,6 +50,7 @@ Artifacts are uploaded to help reviewers (e.g., analyzer reports, evidence JSON/
 ## Branch protections (recommended)
 
 Protect `main` and require these checks before merge:
+
 - Lint PowerShell
 - Pester Tests
 - Evidence Schema Validation
@@ -70,6 +72,7 @@ pwsh -NoProfile -File tools/Enable-BranchProtection.ps1 `
 ```
 
 Notes:
+
 - Requires GitHub CLI installed and authenticated: `gh auth login`.
 - The helper does a single automatic retry if the API call flakes.
 - Update the `-Checks` list if CI job names change.

@@ -1,0 +1,5 @@
+# Ignore generated templates and examples
+/docs/_templates/**
+/docs/examples/**
+# Optionally ignore governance drafts and logs for now (too many legacy rule hits)
+/docs/gov/**

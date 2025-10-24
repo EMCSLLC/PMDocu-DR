@@ -49,8 +49,10 @@ $OSName = $OsInfo.OsName
 $Hostname = $OsInfo.HostName
 $PSVersion = $OsInfo.PsVersion
 
-# --- Font detection ------------------------------------------------------
-$Font = if ($IsWindows) { 'DejaVu Sans' } elseif ($IsLinux) { 'Liberation Sans' } else { 'Helvetica' }
+# --- Font/engine options -------------------------------------------------
+# Prefer reliability in CI: avoid forcing system fonts (which can break XeLaTeX on runners).
+# To use a specific font locally, set $env:PMDOCU_MAINFONT before running.
+$MainFont = $env:PMDOCU_MAINFONT
 
 # --- Converter metadata --------------------------------------------------
 $StartTime = Get-Date
@@ -72,7 +74,15 @@ foreach ($dir in $SrcDirs) {
         $pdfPath = Join-Path $OutDir $pdfName
         try {
             Write-Host "🛠️  Converting: $($file.Name) → $pdfName"
-            & pandoc $file.FullName -o $pdfPath --pdf-engine=xelatex -V "mainfont=$Font" 2>&1 | Out-Null
+            $pandocArgs = @(
+                $file.FullName,
+                '-o', $pdfPath,
+                '--pdf-engine=xelatex'
+            )
+            if ($MainFont) {
+                $pandocArgs += @('-V', "mainfont=$MainFont")
+            }
+            & pandoc @pandocArgs 2>&1 | Out-Null
             if (Test-Path $pdfPath) {
                 $OutputFiles += $pdfPath
             }
@@ -112,7 +122,7 @@ if (Test-Path $MatrixPath) {
     }
 }
 else {
-    Write-Warning "⚠️  CI-Compliance-Matrix.md not found in $DocsDir — skipping timestamp update."
+    Write-Warning "⚠️  CI-Compliance-Matrix.md not found in $DocsRoot — skipping timestamp update."
 }
 
 # --- Build result summary -------------------------------------------------
@@ -132,7 +142,7 @@ $BuildResult = [ordered]@{
     converter        = [ordered]@{
         tool    = $ConverterTool
         version = $PandocVersion
-        options = "--pdf-engine=xelatex -V mainfont='$Font'"
+        options = if ($MainFont) { "--pdf-engine=xelatex -V mainfont='$MainFont'" } else { "--pdf-engine=xelatex" }
     }
     duration_seconds = $Duration
     environment      = [ordered]@{

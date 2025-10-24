@@ -1,10 +1,6 @@
 # PMDocu-DR
 
-<<<<<<< Updated upstream
-Documentation and Digital Record System.
-=======
 Documentation and Digital Record System
->>>>>>> Stashed changes
 
 ---
 
