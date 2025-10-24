@@ -1,62 +1,67 @@
 @{
-    RootModule = ''
-    ModuleVersion = '1.0.0'
+    IncludeDefaultRules = $true
 
-    Rules = @{
+    Rules               = @{
         # ─── General Style Rules ───────────────────────────────
-        PSAlignAssignmentStatement = @{
+        PSAlignAssignmentStatement                     = @{
             Enable = $false # prevents multiple spaces before/after '='
         }
-        PSAvoidUsingAlias = @{
+        PSAvoidUsingAlias                              = @{
             Enable = $true
         }
-        PSAvoidTrailingWhitespace = @{
+        PSAvoidTrailingWhitespace                      = @{
             Enable = $true
         }
-        PSUseConsistentWhitespace = @{
-            Enable = $true
+        PSUseConsistentWhitespace                      = @{
+            Enable          = $true
             CheckInnerBrace = $true
-            CheckOpenBrace = $true
-            CheckOperator = $true # ensures single space around '=' and + - etc.
-            CheckPipe = $true
-            CheckSeparator = $true
+            CheckOpenBrace  = $true
+            CheckOperator   = $true # ensures single space around '=' and + - etc.
+            CheckPipe       = $true
+            CheckSeparator  = $true
         }
-        PSUseConsistentIndentation = @{
-            Enable = $true
-            IndentationSize = 4
+        PSUseConsistentIndentation                     = @{
+            Enable              = $true
+            IndentationSize     = 4
             PipelineIndentation = 'IncreaseIndentationForFirstPipeline'
         }
-        PSUseCorrectCasing = @{
+        PSUseCorrectCasing                             = @{
             Enable = $true
         }
-        PSPlaceOpenBrace = @{
-            Enable = $true
+        PSPlaceOpenBrace                               = @{
+            Enable     = $true
             OnSameLine = $true # aligns with OTBS preset
         }
-        PSPlaceCloseBrace = @{
-            Enable = $true
+        PSPlaceCloseBrace                              = @{
+            Enable       = $true
             NewLineAfter = $true
         }
 
+        # Prefer readability for generated Markdown/content blocks
+        PSAvoidLongLines                               = @{
+            Enable            = $true
+            MaximumLineLength = 240 # allow longer Markdown strings without noise
+        }
+
         # ─── Maintainability / Best Practices ─────────────────
-        PSUseDeclaredVarsMoreThanAssignments = @{
+        PSUseDeclaredVarsMoreThanAssignments           = @{
             Enable = $true
         }
-        PSUseApprovedVerbs = @{
+        PSUseApprovedVerbs                             = @{
             Enable = $true
         }
-        PSUseCmdletCorrectly = @{
+        PSUseCmdletCorrectly                           = @{
             Enable = $true
         }
-        PSAvoidUsingPositionalParameters = @{
+        PSAvoidUsingPositionalParameters               = @{
             Enable = $true
         }
-        PSAvoidUsingEmptyCatchBlock = @{
+        PSAvoidUsingEmptyCatchBlock                    = @{
             Enable = $true
         }
 
         # ─── Security / Reliability ───────────────────────────
-        PSAvoidUsingPlainTextForPassword = @{
+        PSAvoidUsingPlainTextForPassword               = @{
             Enable = $true
         }
         PSAvoidUsingConvertToSecureStringWithPlainText = @{
@@ -64,18 +69,18 @@
         }
 
         # ─── Suppress cosmetic or noisy rules ─────────────────
-        PSReviewUnusedParameter = @{
+        PSReviewUnusedParameter                        = @{
             Enable = $false
         }
-        PSProvideCommentHelp = @{
+        PSProvideCommentHelp                           = @{
             Enable = $false
         }
-        PSUseBOMForUnicodeEncodedFile = @{
+        PSUseBOMForUnicodeEncodedFile                  = @{
             Enable = $false
         }
     }
 
-    ExcludeRules = @(
+    ExcludeRules        = @(
         # Optional overrides — keep disabled unless required
         'PSAvoidGlobalVars'
     )
