@@ -82,12 +82,13 @@ foreach ($dir in $SrcDirs) {
             if ($MainFont) {
                 $pandocArgs += @('-V', "mainfont=$MainFont")
             }
-            & pandoc @pandocArgs 2>&1 | Out-Null
+            $pandocOut = & pandoc @pandocArgs 2>&1
             if (Test-Path $pdfPath) {
                 $OutputFiles += $pdfPath
             }
             else {
-                throw "Conversion failed: $pdfName not created."
+                $detail = if ($pandocOut) { ($pandocOut | Select-Object -First 20) -join "`n" } else { 'no output captured' }
+                throw "Conversion failed: $pdfName not created. Pandoc output:`n$detail"
             }
         }
         catch {
