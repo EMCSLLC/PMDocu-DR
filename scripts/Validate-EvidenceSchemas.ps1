@@ -344,7 +344,7 @@ Add-Line ("**Status:** `{0}`" -f $FinalStatus)
 Add-Line ""
 
 # --- Validation Metrics Table ------------------------------------------------
-$CompletenessText = ("{ 0 }%" -f $Completeness)
+$CompletenessText = "{ 0 }%" -f $Completeness
 
 $metrics = @(
     @{ Metric = 'Total Schemas';    Count = $Evidence.total_validated;   Details = '' },

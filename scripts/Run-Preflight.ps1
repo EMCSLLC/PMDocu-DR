@@ -89,6 +89,23 @@ Add-Log ""
 Add-Log "✅ Preflight completed. Mode: WhatIf=$WhatIfPreference"
 Add-Log "----------------------------------------------------------"
 
+# --- Build Summary object for reuse (JSON + Markdown) -------------------
+$Summary = [ordered]@{
+    schema_version = "1.0.0"
+    evidence_type  = "PreflightSummary"
+    script         = "scripts/Run-Preflight.ps1"
+    timestamp_utc  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHHmmssZ")
+    whatif_mode    = $WhatIfPreference
+    scripts_tested = $Scripts
+    result         = "COMPLETED"
+    environment    = [ordered]@{
+        os         = if ($env:RUNNER_OS) { $env:RUNNER_OS } elseif ($env:OS) { $env:OS } else { "Unknown OS" }
+        ps_version = $PSVersionTable.PSVersion.ToString()
+        hostname   = $env:COMPUTERNAME
+    }
+    log_file       = $LogFile
+}
+
 # --- Evidence Output ---------------------------------------------------
 if ($SaveEvidence) {
     # Save plain log file
@@ -96,22 +113,6 @@ if ($SaveEvidence) {
     Add-Log "🧾 Evidence log written to: $LogFile"
 
     # Save JSON summary
-    $Summary = [ordered]@{
-        schema_version = "1.0.0"
-        evidence_type  = "PreflightSummary"
-        script         = "scripts/Run-Preflight.ps1"
-        timestamp_utc  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHHmmssZ")
-        whatif_mode    = $WhatIfPreference
-        scripts_tested = $Scripts
-        result         = "COMPLETED"
-        environment    = [ordered]@{
-            os         = if ($env:RUNNER_OS) { $env:RUNNER_OS } elseif ($env:OS) { $env:OS } else { "Unknown OS" }
-            ps_version = $PSVersionTable.PSVersion.ToString()
-            hostname   = $env:COMPUTERNAME
-        }
-        log_file       = $LogFile
-    }
-
     $JsonFile = Join-Path $EvidenceDir ("PreflightSummary_{0}.json" -f (Get-Date -Format "yyyyMMddTHHmmssZ"))
     $Summary | ConvertTo-Json -Depth 5 | Set-Content -Path $JsonFile -Encoding utf8NoBOM
     Add-Log "📄 JSON summary written to: $JsonFile"
