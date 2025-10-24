@@ -85,10 +85,20 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 🧰 Setup LaTeX (for Pandoc PDF build)
-        run: choco install miktex --no-progress --yes
+        shell: pwsh
+        run: |
+          choco install miktex --no-progress --yes
+          & "$env:ChocolateyInstall\bin\RefreshEnv.cmd"
+          $miktexBin = "C:\\Program Files\\MiKTeX\\miktex\\bin\\x64"
+          if (Test-Path $miktexBin) { $env:PATH += ";$miktexBin" }
+          xelatex --version
 
       - name: 📦 Install Pandoc
-        run: choco install pandoc --no-progress --yes
+        shell: pwsh
+        run: |
+          choco install pandoc --no-progress --yes
+          & "$env:ChocolateyInstall\bin\RefreshEnv.cmd"
+          pandoc --version
 
       - name: 🔏 Import GPG Key (Public or Private as needed)
         shell: pwsh
@@ -104,6 +114,8 @@ jobs:
 
       - name: 🧾 Build, Sign, and Validate Governance Docs
         shell: pwsh
+        env:
+          PMDOCU_MAINFONT: "Latin Modern Roman"
         run: pwsh ./scripts/Build-GovDocs.ps1
         continue-on-error: false
 

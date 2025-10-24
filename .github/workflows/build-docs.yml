@@ -28,10 +28,20 @@ jobs:
           GPG_PASSPHRASE:      ${{ secrets.CI_GPG_PASSPHRASE }}
         run: pwsh scripts/setup-gpg-signing-ci.ps1
 
-      - name: 🔧 Install Pandoc & LaTeX
+      # 👇 Added installation steps for Pandoc + MiKTeX
+      - name: 📦 Install Pandoc
+        shell: pwsh
         run: |
-          choco install pandoc -y
-          choco install miktex -y
+          choco install pandoc --no-progress -y
+          & "$env:ChocolateyInstall\bin\RefreshEnv.cmd"
+          pandoc --version
+
+      - name: 🧰 Setup LaTeX (MiKTeX)
+        shell: pwsh
+        run: |
+          choco install miktex --no-progress -y
+          & "$env:ChocolateyInstall\bin\RefreshEnv.cmd"
+          xelatex --version
 
       - name: 🧾 Convert Governance Markdown → PDF
         shell: pwsh

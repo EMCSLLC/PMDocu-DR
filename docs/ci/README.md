@@ -166,6 +166,7 @@ If signing fails with a *"no secret key"* error:
    ```powershell
    gpg --import path/to/private.asc
    ```
+
 3. Re-run the signing script with `-KeyID` if multiple keys exist.
 
 ### ⚠️ Schema Validation Errors
@@ -179,6 +180,7 @@ If evidence JSON fails schema validation:
    ```powershell
    pwsh -NoProfile -File scripts/Validate-EvidenceSchemas.ps1
    ```
+
 4. Review output for `INVALID` entries.
 
 ### 🧾 Corrupted or Missing Evidence Files

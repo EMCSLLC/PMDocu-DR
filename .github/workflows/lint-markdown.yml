@@ -25,6 +25,10 @@ jobs:
       - name: 🧭 Checkout repository
         uses: actions/checkout@v4
 
+      - name: 🚨 Check control characters in Markdown
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/Check-ControlChars.ps1
+
       - name: ⚙️ Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -45,16 +49,19 @@ jobs:
       - name: 🧪 Run Markdown linter
         id: lint
         run: |
-          set -e
-          markdownlint-cli2 "**/*.md" "#!docs/releases/**" "#!docs/signed/**" "#!docs/hashes/**" --formatter markdownlint-cli2-formatter-pretty > lint-md.log || true
-
-          if [ -s lint-md.log ]; then
-            echo "Markdown issues found:"
-            cat lint-md.log
-            exit 1
-          else
-            echo "No Markdown issues detected." > lint-md.log
-          fi
+          set -euo pipefail
+          # Run linter, stream to console AND save to artifact; rely on exit code for pass/fail
+          markdownlint-cli2 \
+            "**/*.md" \
+            "#!docs/releases/**" \
+            "#!docs/signed/**" \
+            "#!docs/hashes/**" \
+            "#!docs/_templates/**" \
+            "#!docs/examples/**" \
+            "#!docs/gov/**" \
+            --formatter markdownlint-cli2-formatter-pretty | tee lint-md.log
+          # If we got here, exit code was 0 -> ensure we still have a friendly log
+          echo "No Markdown issues detected." > lint-md.log
 
       - name: 📦 Upload lint log
         if: always()

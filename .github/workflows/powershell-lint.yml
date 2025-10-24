@@ -6,23 +6,19 @@ on:
     - cron: '0 4 * * 0' # Every Sunday at 04:00 UTC
 
 jobs:
-  format-powershell:
-    name: 🧹 Run PSScriptAnalyzer Auto-Fix
+  build-governance-docs:
+    name: Convert & Sign Governance PDFs
     runs-on: windows-latest
 
-    permissions:
-      contents: write  # needed for auto-commits
-
     steps:
-      - name: 🧭 Checkout repository
+      - name: 🧩 Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: ⚙️ Setup PowerShell 7
-        uses: actions/setup-pwsh@v4
-        with:
-          pwsh-version: '7.x'
+      - name: ⚙️ Verify PowerShell 7
+        shell: pwsh
+        run: |
+          Write-Host "PowerShell version:"
+          $PSVersionTable.PSVersion
 
       - name: 📦 Install PSScriptAnalyzer
         run: |

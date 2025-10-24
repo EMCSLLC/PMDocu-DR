@@ -49,8 +49,10 @@ $OSName = $OsInfo.OsName
 $Hostname = $OsInfo.HostName
 $PSVersion = $OsInfo.PsVersion
 
-# --- Font detection ------------------------------------------------------
-$Font = if ($IsWindows) { 'DejaVu Sans' } elseif ($IsLinux) { 'Liberation Sans' } else { 'Helvetica' }
+# --- Font/engine options -------------------------------------------------
+# Prefer reliability in CI: avoid forcing system fonts (which can break XeLaTeX on runners).
+# To use a specific font locally, set $env:PMDOCU_MAINFONT before running.
+$MainFont = $env:PMDOCU_MAINFONT
 
 # --- Converter metadata --------------------------------------------------
 $StartTime = Get-Date
@@ -62,22 +64,69 @@ $OutputFiles = @()
 $Warnings = @()
 $Errors = @()
 
+# --- Sanitization setup --------------------------------------------------
+$TempMdDir = Join-Path ([System.IO.Path]::GetTempPath()) "pmdocu_govdocs"
+if (-not (Test-Path $TempMdDir)) { New-Item -ItemType Directory -Force -Path $TempMdDir | Out-Null }
+
+function Convert-MarkdownToSanitizedFile {
+    param(
+        [Parameter(Mandatory)] [string] $InputPath
+    )
+    # Remove control chars except TAB (\x09), LF (\x0A), CR (\x0D)
+    $raw = Get-Content -Path $InputPath -Raw -Encoding utf8
+    $pattern = '[\x00-\x08\x0B-\x0C\x0E-\x1F]'
+    $ctrlMatches = [System.Text.RegularExpressions.Regex]::Matches($raw, $pattern)
+    if ($ctrlMatches.Count -gt 0) {
+        $clean = [System.Text.RegularExpressions.Regex]::Replace($raw, $pattern, '')
+        $outPath = Join-Path $TempMdDir ([IO.Path]::GetFileName($InputPath))
+        $clean | Set-Content -Path $outPath -Encoding utf8NoBOM
+        $Warnings += "Sanitized $($ctrlMatches.Count) control character(s) in: $InputPath"
+        return $outPath
+    }
+    return $InputPath
+}
+
 # --- File conversion loop -------------------------------------------------
 foreach ($dir in $SrcDirs) {
     Write-Host "📂 Scanning $dir ..."
     $mdFiles = Get-ChildItem -Path $dir -Filter '*.md' -File -ErrorAction SilentlyContinue
     foreach ($file in $mdFiles) {
         $SourceFiles += $file.FullName
+        # Sanitize input if needed (control chars like U+0008 can break LaTeX)
+        $inputPath = Convert-MarkdownToSanitizedFile -InputPath $file.FullName
         $pdfName = [System.IO.Path]::ChangeExtension($file.Name, '.pdf')
         $pdfPath = Join-Path $OutDir $pdfName
         try {
             Write-Host "🛠️  Converting: $($file.Name) → $pdfName"
-            & pandoc $file.FullName -o $pdfPath --pdf-engine=xelatex -V "mainfont=$Font" 2>&1 | Out-Null
+            $pandocArgs = @(
+                $inputPath,
+                '-o', $pdfPath,
+                '--pdf-engine=xelatex'
+            )
+            if ($MainFont) {
+                $pandocArgs += @('-V', "mainfont=$MainFont")
+            }
+            $pandocOut = & pandoc @pandocArgs 2>&1
             if (Test-Path $pdfPath) {
                 $OutputFiles += $pdfPath
             }
             else {
-                throw "Conversion failed: $pdfName not created."
+                # Attempt a fallback to pdflatex if xelatex path/packages are not available
+                Write-Warning "⚠️  xelatex conversion failed; attempting fallback with pdflatex..."
+                $pandocArgsFallback = @(
+                    $file.FullName,
+                    '-o', $pdfPath,
+                    '--pdf-engine=pdflatex'
+                )
+                $pandocOut2 = & pandoc @pandocArgsFallback 2>&1
+                if (Test-Path $pdfPath) {
+                    $OutputFiles += $pdfPath
+                }
+                else {
+                    $detail1 = if ($pandocOut) { ($pandocOut | Select-Object -First 20) -join "`n" } else { 'no output captured' }
+                    $detail2 = if ($pandocOut2) { ($pandocOut2 | Select-Object -First 20) -join "`n" } else { 'no output captured' }
+                    throw "Conversion failed: $pdfName not created. Pandoc output (xelatex):`n$detail1`n---`nFallback output (pdflatex):`n$detail2"
+                }
             }
         }
         catch {
@@ -112,7 +161,7 @@ if (Test-Path $MatrixPath) {
     }
 }
 else {
-    Write-Warning "⚠️  CI-Compliance-Matrix.md not found in $DocsDir — skipping timestamp update."
+    Write-Warning "⚠️  CI-Compliance-Matrix.md not found in $DocsRoot — skipping timestamp update."
 }
 
 # --- Build result summary -------------------------------------------------
@@ -132,7 +181,7 @@ $BuildResult = [ordered]@{
     converter        = [ordered]@{
         tool    = $ConverterTool
         version = $PandocVersion
-        options = "--pdf-engine=xelatex -V mainfont='$Font'"
+        options = if ($MainFont) { "--pdf-engine=xelatex -V mainfont='$MainFont'" } else { "--pdf-engine=xelatex" }
     }
     duration_seconds = $Duration
     environment      = [ordered]@{

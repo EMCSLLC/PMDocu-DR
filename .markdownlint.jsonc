@@ -1,0 +1,16 @@
+{
+    // Enable defaults, then relax noisy rules for governance docs and templates
+    "default": true,
+    // Long lines are common in tables/URLs; allow them
+    "MD013": false,
+    // Allow emphasis used as headings in legacy docs
+    "MD036": false,
+    // Don’t require first line to be H1 (templates/tables often start differently)
+    "MD041": false,
+    // Don’t require language on fenced code blocks (some snippets are generic or multi-shell)
+    "MD040": false,
+    // Don’t enforce single H1 per file (some sample docs and templates intentionally vary)
+    "MD025": false,
+    // Don’t force a specific bullet style across older docs
+    "MD004": false
+}
