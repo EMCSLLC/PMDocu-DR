@@ -39,7 +39,6 @@ pwsh -NoProfile -File scripts/Run-Preflight.ps1 -WhatIf
 
 ## CI checks (PRs)
 
-
 - Lint PowerShell (Error-level findings fail the job)
 - Pester Tests (publishes JUnit results)
 - Evidence Schema Validation (WhatIf)
