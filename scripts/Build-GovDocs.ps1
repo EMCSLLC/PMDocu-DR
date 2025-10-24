@@ -87,8 +87,22 @@ foreach ($dir in $SrcDirs) {
                 $OutputFiles += $pdfPath
             }
             else {
-                $detail = if ($pandocOut) { ($pandocOut | Select-Object -First 20) -join "`n" } else { 'no output captured' }
-                throw "Conversion failed: $pdfName not created. Pandoc output:`n$detail"
+                # Attempt a fallback to pdflatex if xelatex path/packages are not available
+                Write-Warning "⚠️  xelatex conversion failed; attempting fallback with pdflatex..."
+                $pandocArgsFallback = @(
+                    $file.FullName,
+                    '-o', $pdfPath,
+                    '--pdf-engine=pdflatex'
+                )
+                $pandocOut2 = & pandoc @pandocArgsFallback 2>&1
+                if (Test-Path $pdfPath) {
+                    $OutputFiles += $pdfPath
+                }
+                else {
+                    $detail1 = if ($pandocOut) { ($pandocOut | Select-Object -First 20) -join "`n" } else { 'no output captured' }
+                    $detail2 = if ($pandocOut2) { ($pandocOut2 | Select-Object -First 20) -join "`n" } else { 'no output captured' }
+                    throw "Conversion failed: $pdfName not created. Pandoc output (xelatex):`n$detail1`n---`nFallback output (pdflatex):`n$detail2"
+                }
             }
         }
         catch {
