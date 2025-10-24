@@ -69,6 +69,17 @@ pwsh -NoProfile -File tools/Enable-BranchProtection.ps1 `
   -RequiredApprovals 1
 ```
 
+Notes:
+- Requires GitHub CLI installed and authenticated: `gh auth login`.
+- The helper does a single automatic retry if the API call flakes.
+- Update the `-Checks` list if CI job names change.
+
+## Lint rules of note
+
+- The repo uses a single analyzer config: `config/PSScriptAnalyzerSettings.psd1`.
+- Long lines: PSAvoidLongLines is enabled with `MaximumLineLength = 300` to accommodate generated Markdown content.
+- Spacing: Consistent whitespace around operators is enforced; run the formatter task if needed.
+
 ## Tips
 
 - If the Problems panel shows stale errors, try: “PowerShell: Restart Session” in VS Code
